@@ -12,6 +12,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import build_opener, HTTPCookieProcessor, HTTPSHandler, ProxyHandler, Request
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.cli_language import cli_language, message
+
 
 def pretty(value):
     return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
@@ -29,7 +32,7 @@ class Api:
         self.client = build_opener(*handlers)
 
     def request(self, path, *, method="GET", payload=None, binary=False):
-        headers = {"X-Dashboard-Request": "1", "Origin": self.base}
+        headers = {"X-Dashboard-Request": "1", "Origin": self.base, "Accept-Language": cli_language()}
         if payload is not None and not isinstance(payload, bytes):
             payload = json.dumps(payload).encode()
             headers["Content-Type"] = "application/json"
@@ -43,7 +46,7 @@ class Api:
     def login(self):
         path = os.environ.get("ADMIN_PASSWORD_FILE")
         if not path:
-            raise ValueError("Kein Administrationskennwort konfiguriert.")
+            raise ValueError(message("Kein Administrationskennwort konfiguriert."))
         self.request("/api/login", method="POST", payload={"password": Path(path).read_text().strip()})
 
 
@@ -56,7 +59,7 @@ def get_group(doc, group_id):
     for group in doc["groups"]:
         if group["id"] == group_id:
             return group
-    raise ValueError("Kategorie nicht gefunden: " + group_id)
+    raise ValueError(message("Kategorie nicht gefunden: ") + group_id)
 
 
 def get_item(doc, item_id):
@@ -64,7 +67,7 @@ def get_item(doc, item_id):
         for item in group["items"]:
             if item["id"] == item_id:
                 return group, item
-    raise ValueError("Eintrag nicht gefunden: " + item_id)
+    raise ValueError(message("Eintrag nicht gefunden: ") + item_id)
 
 
 def fields(parser):
@@ -72,7 +75,7 @@ def fields(parser):
         parser.add_argument("--" + field)
     parser.add_argument("--kind", choices=["link", "http", "service", "pihole", "nas", "youtube"])
     parser.add_argument("--check-link", action=argparse.BooleanOptionalAction, default=None,
-                        help="Webseite alle fünf Minuten prüfen (Link-Kacheln)")
+                        help=message("Webseite alle fünf Minuten prüfen (Link-Kacheln)"))
 
 
 def run():
@@ -80,9 +83,9 @@ def run():
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("show", "sources", "status", "backup"):
         commands.add_parser(name)
-    apply = commands.add_parser("apply", help="Vollständiges Dashboard-JSON mit Revision aus stdin")
+    apply = commands.add_parser("apply", help=message("Vollständiges Dashboard-JSON mit Revision aus stdin"))
     apply.add_argument("--dry-run", action="store_true")
-    restore = commands.add_parser("restore", help="Vorhandene Sicherung aus stdin wiederherstellen")
+    restore = commands.add_parser("restore", help=message("Vorhandene Sicherung aus stdin wiederherstellen"))
     restore.add_argument("--confirm", action="store_true", required=True)
     add = commands.add_parser("add")
     add.add_argument("group")
@@ -93,7 +96,7 @@ def run():
     move = commands.add_parser("move")
     move.add_argument("item")
     move.add_argument("group")
-    move.add_argument("--before", help="ID der nachfolgenden Kachel")
+    move.add_argument("--before", help=message("ID der nachfolgenden Kachel"))
     remove = commands.add_parser("remove")
     remove.add_argument("item")
     remove.add_argument("--confirm", action="store_true", required=True)
@@ -110,22 +113,22 @@ def run():
         api.login()
         if cmd == "backup":
             if sys.stdout.isatty():
-                raise ValueError("ZIP-Ausgabe in eine Datei umleiten.")
+                raise ValueError(message("ZIP-Ausgabe in eine Datei umleiten."))
             sys.stdout.buffer.write(api.request("/api/backup", binary=True))
         else:
             payload = sys.stdin.buffer.read(32 * 1024 * 1024 + 1)
             if len(payload) > 32 * 1024 * 1024:
-                raise ValueError("Sicherung zu groß.")
+                raise ValueError(message("Sicherung zu groß."))
             print(pretty(api.request("/api/restore", method="POST", payload=payload)), end="")
         return
     doc = dashboard(api)
     if cmd == "apply":
         proposed = json.load(sys.stdin)
         if proposed.get("revision") != doc["revision"]:
-            raise ValueError("Revision veraltet. Änderungen mit einem frischen Export abgleichen.")
+            raise ValueError(message("Revision veraltet. Änderungen mit einem frischen Export abgleichen."))
         if args.dry_run:
             sys.stdout.writelines(difflib.unified_diff(pretty(doc).splitlines(True), pretty(proposed).splitlines(True),
-                                                      fromfile="gespeichert", tofile="vorgeschlagen"))
+                                                      fromfile=message("gespeichert"), tofile=message("vorgeschlagen")))
             return
         doc = proposed
     elif cmd in ("add", "update"):
@@ -133,7 +136,7 @@ def run():
                    if key not in {"command", "group", "item"} and value is not None}
         if cmd == "add":
             if not changes.get("name") or not changes.get("url"):
-                raise ValueError("Name und URL sind erforderlich.")
+                raise ValueError(message("Name und URL sind erforderlich."))
             changes.setdefault("kind", "link")
             changes["id"] = str(uuid.uuid4())
             get_group(doc, args.group)["items"].append(changes)
@@ -148,13 +151,13 @@ def run():
         old, item = get_item(doc, args.item)
         dest = get_group(doc, args.group)
         if args.before == args.item:
-            raise ValueError("Diese Kachel ist bereits ausgewählt.")
+            raise ValueError(message("Diese Kachel ist bereits ausgewählt."))
         old["items"].remove(item)
         position = len(dest["items"])
         if args.before:
             ids = [entry["id"] for entry in dest["items"]]
             if args.before not in ids:
-                raise ValueError("Die gewünschte Position gehört nicht zur Zielkategorie.")
+                raise ValueError(message("Die gewünschte Position gehört nicht zur Zielkategorie."))
             position = ids.index(args.before)
         dest["items"].insert(position, item)
     elif cmd == "remove":
@@ -162,7 +165,7 @@ def run():
         group["items"].remove(item)
     api.login()
     result = api.request("/api/dashboard", method="PUT", payload=doc)
-    print("Gespeichert, Revision", result.get("revision", doc["revision"] + 1))
+    print(message("Gespeichert, Revision"), result.get("revision", doc["revision"] + 1))
 
 
 if __name__ == "__main__":

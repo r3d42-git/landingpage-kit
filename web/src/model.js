@@ -1,10 +1,12 @@
+import {language,t} from './i18n.js'
+
 export const copy = value => JSON.parse(JSON.stringify(value))
 
 export const categoryIcons = new Map([
-  ['network','Netzwerk'], ['nas','Speicher'], ['layers','Ebenen'],
-  ['folder','Ordner'], ['monitor-activity','Monitoring'], ['play-square','Player'],
-  ['link','Link'], ['server','Server'], ['shield','Schutz'],
-  ['globe','Globus'], ['home','Haus'], ['tools','Werkzeug'], ['monitor','Bildschirm']
+  ['network','Network'], ['nas','Storage'], ['layers','Layers'],
+  ['folder','Folder'], ['monitor-activity','Monitoring'], ['play-square','Player'],
+  ['link','Link'], ['server','Server'], ['shield','Protection'],
+  ['globe','Globe'], ['home','Home'], ['tools','Tools'], ['monitor','Display']
 ])
 
 const iconAliases = [
@@ -80,14 +82,16 @@ export function displayHost(raw) {
     return new URL(raw).host
   } catch { return raw }
 }
-export const timeText = ts => ts ? new Date(ts * 1000).toLocaleString('de-DE', {dateStyle:'short', timeStyle:'short'}) : ''
+export const timeText = ts => ts ? new Date(ts * 1000).toLocaleString(language.value, {dateStyle:'short', timeStyle:'short'}) : ''
 export function ageText(ts, now) {
   if (!ts) return ''
   const minutes = Math.max(0, Math.floor((now / 1000 - ts) / 60))
-  if (minutes < 1) return 'gerade eben'
-  if (minutes < 60) return 'vor ' + minutes + ' Min.'
-  if (minutes < 1440) return 'vor ' + Math.floor(minutes / 60) + ' Std.'
-  return 'am ' + timeText(ts)
+  if (minutes < 1) return t('just now')
+  if (minutes < 1440) {
+    const relative = new Intl.RelativeTimeFormat(language.value, {style:'short'})
+    return minutes < 60 ? relative.format(-minutes, 'minute') : relative.format(-Math.floor(minutes / 60), 'hour')
+  }
+  return t('on {date}', {date:timeText(ts)})
 }
 export function tone(text) {
   let hash = 0
@@ -96,7 +100,8 @@ export function tone(text) {
 }
 
 export async function api(path, method = 'GET', data, signal) {
-  const options = {method, credentials:'same-origin', cache:'no-store', headers:{}, signal}
+  const requestedLanguage = language.value
+  const options = {method, credentials:'same-origin', cache:'no-store', headers:{'Accept-Language':requestedLanguage}, signal}
   if (method !== 'GET') {
     options.headers['X-Dashboard-Request'] = '1'
     options.headers['Content-Type'] = data instanceof File ? 'application/zip' : 'application/json'
@@ -104,13 +109,29 @@ export async function api(path, method = 'GET', data, signal) {
   }
   let response
   try { response = await fetch('/api/' + path, options) }
-  catch { throw new Error('Der Server ist zurzeit nicht erreichbar.') }
+  catch { throw new Error(t('The server is currently unreachable.')) }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    const error = new Error(typeof body.error === 'string' ? body.error : 'Anfrage fehlgeschlagen (HTTP ' + response.status + ').')
+    const error = new Error(typeof body.error === 'string' ? body.error : t('Request failed (HTTP {status}).', {status:response.status}))
     error.status = response.status
+    error.language = requestedLanguage
+    error.translations = body.error_translations
     throw error
   }
   if (path === 'backup') return response.blob()
   return response.status === 204 ? {} : response.json()
+}
+
+// A notification may remain open while the visitor changes language.
+export function apiError(error, context) {
+  return () => {
+    let detail = t('The server is currently unreachable.')
+    if (error.status) {
+      const translated = error.translations?.[language.value]
+      if (typeof translated === 'string') detail = translated
+      else if (error.language === language.value) detail = error.message
+      else detail = t('Request failed (HTTP {status}).', {status:error.status})
+    }
+    return context ? t(context, {detail}) : detail
+  }
 }

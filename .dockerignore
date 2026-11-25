@@ -2,6 +2,7 @@
 !LICENSE
 !THIRD_PARTY_NOTICES.txt
 !server.py
+!localization.py
 !integrations.py
 !public_youtube.py
 !deploy/
@@ -11,6 +12,7 @@ deploy/**
 tools/**
 !tools/configure.py
 !tools/manage.py
+!tools/cli_language.py
 !tools/requirements-configure.txt
 !web/
 web/**

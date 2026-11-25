@@ -29,6 +29,7 @@ from zipfile import BadZipFile, ZIP_DEFLATED, ZIP_STORED, ZipFile
 from zlib import error as ZlibError
 
 import public_youtube
+from localization import Text, encode_translations, phrase, render_reading, request_language, translate
 
 
 ROOT = Path(__file__).resolve().parent
@@ -64,13 +65,31 @@ ASSET_TYPES = {
     ".svg": "image/svg+xml",
     ".webp": "image/webp",
 }
+FIELD_NAMES = {
+    "Abmeldung": "sign-out", "Adresse": "address", "Admin-Passwort": "admin password",
+    "Anmeldung": "sign-in", "Bezeichnung": "label", "Einstellungen": "settings", "Gruppe": "group",
+    "Gruppenname": "group name", "Kachel": "tile", "Kachelname": "tile name", "Kanaladresse": "channel address",
+    "Kanalname": "channel name", "Kanalsuche": "channel lookup", "Passwort": "password", "Quelle": "source",
+    "Quellenname": "source name", "Statusdetails": "status details", "Statuswert": "status value", "Titel": "title",
+    "Untertitel": "subtitle", "YouTube-Kanal": "YouTube channel", "Zielname": "target name",
+}
+
+LINK_REACHABLE = Text("Webseite erreichbar", "Website reachable")
+LINK_UNCONFIRMED = Text("Erreichbarkeit noch unbestätigt", "Reachability still unconfirmed")
+LINK_UNREACHABLE = Text("Vom Server nicht erreichbar", "Unreachable from the server")
+PROBE_TIMEOUT = Text("Zeitlimit überschritten", "Timed out")
+PROBE_FAILED = Text("Statusabfrage fehlgeschlagen", "Status check failed")
 
 
 class RequestError(Exception):
     def __init__(self, message, status=HTTPStatus.BAD_REQUEST, **details):
         super().__init__(message)
+        self.message = message
         self.status = status
         self.details = details
+
+    def localized(self, language):
+        return translate(self.message, language)
 
 
 def unique_object(pairs):
@@ -86,16 +105,20 @@ def parse_json(data):
     try:
         return json.loads(data.decode("utf-8"), object_pairs_hook=unique_object)
     except (ValueError, RecursionError):
-        raise RequestError("Ungültiges JSON.") from None
+        raise RequestError(Text("Ungültiges JSON.", "Invalid JSON.")) from None
 
 
 def json_bytes(value):
     return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
 
 
+def field_name(label):
+    return Text(label, FIELD_NAMES[label]) if label in FIELD_NAMES and not isinstance(label, Text) else label
+
+
 def fields(value, allowed, required, label):
     if not isinstance(value, dict) or value.keys() - allowed or required - value.keys():
-        raise RequestError(f"Ungültige Felder in {label}.")
+        raise RequestError(phrase("Ungültige Felder in {}.", "Invalid fields in {}.", field_name(label)))
 
 
 def text_value(value, limit, label, *, blank=False):
@@ -106,20 +129,20 @@ def text_value(value, limit, label, *, blank=False):
         or CONTROL_CHARACTERS.search(value)
         or any(0xD800 <= ord(char) <= 0xDFFF for char in value)
     ):
-        raise RequestError(f"Ungültiger Text für {label}.")
+        raise RequestError(phrase("Ungültiger Text für {}.", "Invalid text for {}.", field_name(label)))
     return value
 
 
 def identifier(value):
     if not isinstance(value, str) or not ID_PATTERN.fullmatch(value):
-        raise RequestError("Ungültige ID.")
+        raise RequestError(Text("Ungültige ID.", "Invalid ID."))
     return value
 
 
 def url_value(value):
     value = text_value(value, 2048, "Adresse")
     if any(char.isspace() or char in '\\<>"`' for char in value):
-        raise RequestError("Ungültige Adresse.")
+        raise RequestError(Text("Ungültige Adresse.", "Invalid address."))
     try:
         url = urlsplit(value)
         if url.scheme in {"http", "https"} and url.hostname and url.username is None:
@@ -132,21 +155,24 @@ def url_value(value):
                 return value
     except ValueError:
         pass
-    raise RequestError("Adressen müssen mit http://, https:// oder einem einzelnen / beginnen.")
+    raise RequestError(Text("Adressen müssen mit http://, https:// oder einem einzelnen / beginnen.", "Addresses must start with http://, https:// or a single /."))
 
 
 def validate_channels(channels):
     if not isinstance(channels, list) or len(channels) > public_youtube.MAX_CHANNELS:
-        raise RequestError(f"Pro Kachel sind bis zu {public_youtube.MAX_CHANNELS} YouTube-Kanäle möglich.")
+        raise RequestError(phrase(
+            "Pro Kachel sind bis zu {} YouTube-Kanäle möglich.",
+            "Each tile supports up to {} YouTube channels.", public_youtube.MAX_CHANNELS,
+        ))
     result = []
     seen = set()
     for channel in channels:
         fields(channel, {"id", "name"}, {"id", "name"}, "YouTube-Kanal")
         channel_id = channel["id"]
         if not isinstance(channel_id, str) or not public_youtube.CHANNEL_ID.fullmatch(channel_id):
-            raise RequestError("Ungültige YouTube-Kanal-ID.")
+            raise RequestError(Text("Ungültige YouTube-Kanal-ID.", "Invalid YouTube channel ID."))
         if channel_id in seen:
-            raise RequestError("Der YouTube-Kanal ist bereits eingetragen.")
+            raise RequestError(Text("Der YouTube-Kanal ist bereits eingetragen.", "This YouTube channel has already been added."))
         seen.add(channel_id)
         result.append({"id": channel_id, "name": text_value(channel["name"], 120, "Kanalname")})
     return result
@@ -160,7 +186,7 @@ def validate_dashboard(document, *, require_revision):
         "Dashboard",
     )
     if "revision" in document and (type(document["revision"]) is not int or document["revision"] < 1):
-        raise RequestError("Ungültige Revision.")
+        raise RequestError(Text("Ungültige Revision.", "Invalid revision."))
     settings = document["settings"]
     fields(settings, {"title", "subtitle"}, {"title"}, "Einstellungen")
     settings = {
@@ -169,7 +195,7 @@ def validate_dashboard(document, *, require_revision):
     }
     groups = document["groups"]
     if not isinstance(groups, list) or len(groups) > 30:
-        raise RequestError("Das Dashboard unterstützt bis zu 30 Gruppen.")
+        raise RequestError(Text("Das Dashboard unterstützt bis zu 30 Gruppen.", "The dashboard supports up to 30 groups."))
     group_ids = set()
     item_ids = set()
     validated_groups = []
@@ -177,10 +203,10 @@ def validate_dashboard(document, *, require_revision):
         fields(group, {"id", "name", "icon", "logo", "items"}, {"id", "name", "items"}, "Gruppe")
         group_id = identifier(group["id"])
         if group_id in group_ids:
-            raise RequestError("Eine Gruppen-ID kommt mehrfach vor.")
+            raise RequestError(Text("Eine Gruppen-ID kommt mehrfach vor.", "A group ID occurs more than once."))
         group_ids.add(group_id)
         if not isinstance(group["items"], list) or len(item_ids) + len(group["items"]) > 250:
-            raise RequestError("Das Dashboard unterstützt bis zu 250 Kacheln.")
+            raise RequestError(Text("Das Dashboard unterstützt bis zu 250 Kacheln.", "The dashboard supports up to 250 tiles."))
         validated_group = {"id": group_id, "name": text_value(group["name"], 160, "Gruppenname"), "items": []}
         optional_fields(validated_group, group, {"icon": 120})
         for item in group["items"]:
@@ -190,11 +216,11 @@ def validate_dashboard(document, *, require_revision):
             )
             item_id = identifier(item["id"])
             if item_id in item_ids:
-                raise RequestError("Eine Kachel-ID kommt mehrfach vor.")
+                raise RequestError(Text("Eine Kachel-ID kommt mehrfach vor.", "A tile ID occurs more than once."))
             item_ids.add(item_id)
             kind = item["kind"]
             if not isinstance(kind, str) or kind not in ITEM_KINDS:
-                raise RequestError("Unbekannter Kacheltyp.")
+                raise RequestError(Text("Unbekannter Kacheltyp.", "Unknown tile type."))
             validated_item = {
                 "id": item_id,
                 "name": text_value(item["name"], 160, "Kachelname"),
@@ -204,19 +230,19 @@ def validate_dashboard(document, *, require_revision):
             optional_fields(validated_item, item, {"subtitle": 400, "tag": 80, "icon": 120})
             if "check_link" in item:
                 if kind != "link" or type(item["check_link"]) is not bool:
-                    raise RequestError("Die optionale Webprüfung gehört zu einer Link-Kachel.")
+                    raise RequestError(Text("Die optionale Webprüfung gehört zu einer Link-Kachel.", "The optional website check requires a link tile."))
                 if item["check_link"]:
                     if not urlsplit(validated_item["url"]).hostname:
-                        raise RequestError("Für die Webprüfung ist eine vollständige HTTP- oder HTTPS-Adresse erforderlich.")
+                        raise RequestError(Text("Für die Webprüfung ist eine vollständige HTTP- oder HTTPS-Adresse erforderlich.", "The website check requires a full HTTP or HTTPS address."))
                     validated_item["check_link"] = True
             if kind == "youtube":
                 validated_item["channels"] = validate_channels(item.get("channels", []))
             elif "channels" in item:
-                raise RequestError("Die Kanalliste gehört zu einer YouTube-Kachel.")
+                raise RequestError(Text("Die Kanalliste gehört zu einer YouTube-Kachel.", "The channel list requires a YouTube tile."))
             target = item.get("target")
             if target not in (None, ""):
                 if target not in ("_blank", "_self"):
-                    raise RequestError("Ungültiges Linkziel.")
+                    raise RequestError(Text("Ungültiges Linkziel.", "Invalid link target."))
                 validated_item["target"] = target
             if item.get("source") not in (None, ""):
                 validated_item["source"] = identifier(item["source"])
@@ -224,7 +250,7 @@ def validate_dashboard(document, *, require_revision):
         validated_groups.append(validated_group)
     document = {"settings": settings, "groups": validated_groups}
     if len(json_bytes(document)) > MAX_DOCUMENT - 128:
-        raise RequestError("Das Dashboard ist zu groß.")
+        raise RequestError(Text("Das Dashboard ist zu groß.", "The dashboard is too large."))
     return document
 
 
@@ -245,35 +271,35 @@ def asset_path(name):
         or any(char in name for char in "\\:")
         or any(part in {"", ".", ".."} for part in name.split("/"))
     ):
-        raise RequestError("Ungültiger Pfad für ein Bild.")
+        raise RequestError(Text("Ungültiger Pfad für ein Bild.", "Invalid image path."))
     return name
 
 
 def validate_svg(data):
     lower = data.lower()
     if b"<!doctype" in lower or b"<!entity" in lower or b"<?xml-stylesheet" in lower:
-        raise RequestError("Das SVG enthält aktive oder externe Inhalte.")
+        raise RequestError(Text("Das SVG enthält aktive oder externe Inhalte.", "The SVG contains active or external content."))
     try:
         root = ElementTree.fromstring(data.decode("utf-8"))
     except (UnicodeError, ElementTree.ParseError, ValueError):
-        raise RequestError("Ungültiges SVG.") from None
+        raise RequestError(Text("Ungültiges SVG.", "Invalid SVG.")) from None
     if root.tag not in {"svg", f"{SVG_NAMESPACE}svg"}:
-        raise RequestError("Ungültiges SVG.")
+        raise RequestError(Text("Ungültiges SVG.", "Invalid SVG."))
     forbidden = {"animate", "animatemotion", "animatetransform", "foreignobject", "iframe", "script", "set"}
     for element in root.iter():
         tag = element.tag.rsplit("}", 1)[-1].lower()
         if tag in forbidden:
-            raise RequestError("Das SVG enthält aktive oder externe Inhalte.")
+            raise RequestError(Text("Das SVG enthält aktive oder externe Inhalte.", "The SVG contains active or external content."))
         values = list(element.attrib.values())
         if tag == "style" and element.text:
             values.append(element.text)
         for key, value in element.attrib.items():
             attribute = key.rsplit("}", 1)[-1].lower()
             if attribute.startswith("on") or (attribute in {"href", "src"} and not value.startswith("#")):
-                raise RequestError("Das SVG enthält aktive oder externe Inhalte.")
+                raise RequestError(Text("Das SVG enthält aktive oder externe Inhalte.", "The SVG contains active or external content."))
         for value in values:
             if re.search(r"@import|url\(\s*['\"]?\s*[^#'\")\s]", value, re.IGNORECASE):
-                raise RequestError("Das SVG enthält aktive oder externe Inhalte.")
+                raise RequestError(Text("Das SVG enthält aktive oder externe Inhalte.", "The SVG contains active or external content."))
 
 
 def validate_asset(name, data):
@@ -290,14 +316,14 @@ def validate_asset(name, data):
         ".webp": lambda: data.startswith(b"RIFF") and data[8:12] == b"WEBP",
     }
     if not 0 < len(data) <= MAX_ASSET or suffix not in is_image or not is_image[suffix]():
-        raise RequestError("Ungültiges oder zu großes Bild.")
+        raise RequestError(Text("Ungültiges oder zu großes Bild.", "The image is invalid or too large."))
     if suffix == ".svg":
         validate_svg(data)
 
 
 def validate_asset_budget(count, size):
     if count > MAX_ASSETS or size > MAX_ASSETS_SIZE:
-        raise RequestError("Das Archiv enthält zu viele oder zu große Bilder.")
+        raise RequestError(Text("Das Archiv enthält zu viele oder zu große Bilder.", "The archive contains too many images or images that are too large."))
 
 
 def read_seed(seed_dir):
@@ -307,14 +333,14 @@ def read_seed(seed_dir):
     with seed_file.open("rb") as file:
         raw_document = file.read(MAX_DOCUMENT + 1)
     if len(raw_document) > MAX_DOCUMENT:
-        raise RequestError("Die Startkonfiguration ist zu groß.")
+        raise RequestError(Text("Die Startkonfiguration ist zu groß.", "The initial configuration is too large."))
     document = validate_dashboard(parse_json(raw_document), require_revision=False)
     assets_dir = seed_dir / "assets"
     assets = {}
     total_size = 0
     for path in sorted(assets_dir.rglob("*")):
         if path.is_symlink():
-            raise RequestError("Symbolische Links sind für mitgelieferte Bilder ungültig.")
+            raise RequestError(Text("Symbolische Links sind für mitgelieferte Bilder ungültig.", "Bundled images cannot use symbolic links."))
         if not path.is_file() or path.name.startswith("."):
             continue
         name = path.relative_to(assets_dir).as_posix()
@@ -382,7 +408,7 @@ class Store:
     @contextmanager
     def archive_operation(self):
         if not self.archive_slot.acquire(blocking=False):
-            raise RequestError("Ein Backup-Vorgang läuft bereits.", HTTPStatus.CONFLICT)
+            raise RequestError(Text("Ein Backup-Vorgang läuft bereits.", "A backup operation is already in progress."), HTTPStatus.CONFLICT)
         try:
             yield
         finally:
@@ -413,7 +439,8 @@ class Store:
             current = self.read_dashboard(database)
             if expected_revision is not None and current["revision"] != expected_revision:
                 raise RequestError(
-                    "Das Dashboard wurde zwischenzeitlich geändert.", HTTPStatus.CONFLICT, revision=current["revision"],
+                    Text("Das Dashboard wurde zwischenzeitlich geändert.", "The dashboard has changed since you opened it."),
+                    HTTPStatus.CONFLICT, revision=current["revision"],
                 )
             revision = current["revision"] + 1
             database.execute("UPDATE dashboard SET revision = ?, document = ? WHERE id = 1", (revision, json_bytes(document)))
@@ -453,17 +480,17 @@ class Store:
             measurement_max_age = result.get("measurement_max_age", stale_after)
             if result["state"] in {"ok", "warning"} and checked_at - observed_at <= measurement_max_age:
                 last_success = max(last_success or 0, observed_at)
-            payload = {**result, "checked_at": checked_at, "last_success": last_success}
+            payload = {**result, "checked_at": checked_at, "last_success": last_success, "localized": True}
             if current and current.get("check_link"):
                 failures = min(2, previous.get("failures", 0) + 1) if result["state"] == "down" else 0
                 payload["failures"] = failures
                 if failures == 1:
                     if last_success and previous.get("state") == "ok":
-                        payload.update(state="ok", label="Webseite erreichbar")
+                        payload.update(state="ok", label=LINK_REACHABLE)
                     else:
-                        payload.update(state="unknown", label="Erreichbarkeit noch unbestätigt")
+                        payload.update(state="unknown", label=LINK_UNCONFIRMED)
                 elif failures == 2:
-                    payload["label"] = "Vom Server nicht erreichbar"
+                    payload["label"] = LINK_UNREACHABLE
             if (current and current["kind"] == "nas" and result["state"] in {"stale", "unknown"}
                     and not result.get("metrics") and last_success and previous.get("metrics")):
                 payload.update(state="stale", metrics=previous["metrics"], observed_at=last_success)
@@ -472,7 +499,7 @@ class Store:
             database.execute("""
                 INSERT INTO statuses VALUES (?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET fingerprint = excluded.fingerprint, payload = excluded.payload
-            """, (item_id, signature, json_bytes(payload)))
+            """, (item_id, signature, json_bytes(encode_translations(payload))))
 
     def backup(self):
         with closing(self.connection()) as database, database, BytesIO() as output:
@@ -490,7 +517,7 @@ def read_backup(data):
         with ZipFile(BytesIO(data)) as archive:
             entries = archive.infolist()
             if len(entries) > 2 * MAX_ASSETS + 1:
-                raise RequestError("Das Backup enthält zu viele Einträge.")
+                raise RequestError(Text("Das Backup enthält zu viele Einträge.", "The backup contains too many entries."))
             names = set()
             assets = {}
             document = None
@@ -498,69 +525,69 @@ def read_backup(data):
             for entry in entries:
                 name = entry.orig_filename
                 if name in names or entry.filename != name or entry.flag_bits & 1 or entry.compress_type not in {ZIP_STORED, ZIP_DEFLATED}:
-                    raise RequestError("Ungültiger Eintrag im Backup.")
+                    raise RequestError(Text("Ungültiger Eintrag im Backup.", "Invalid entry in the backup."))
                 names.add(name)
                 file_type = stat.S_IFMT(entry.external_attr >> 16)
                 if entry.is_dir():
                     if name != "assets/":
                         if not name.startswith("assets/"):
-                            raise RequestError("Unerwarteter Ordner im Backup.")
+                            raise RequestError(Text("Unerwarteter Ordner im Backup.", "Unexpected folder in the backup."))
                         asset_path(name[len("assets/"):-1])
                     if entry.file_size or file_type not in {0, stat.S_IFDIR}:
-                        raise RequestError("Ungültiger Ordner im Backup.")
+                        raise RequestError(Text("Ungültiger Ordner im Backup.", "Invalid folder in the backup."))
                     continue
                 if file_type not in {0, stat.S_IFREG}:
-                    raise RequestError("Ungültiger Dateityp im Backup.")
+                    raise RequestError(Text("Ungültiger Dateityp im Backup.", "Invalid file type in the backup."))
                 if name == "dashboard.json":
                     if entry.file_size > MAX_DOCUMENT:
-                        raise RequestError("Die Dashboard-Datei ist zu groß.")
+                        raise RequestError(Text("Die Dashboard-Datei ist zu groß.", "The dashboard file is too large."))
                     manifest = parse_json(archive.read(entry))
                     fields(manifest, {"schema_version", "dashboard"}, {"schema_version", "dashboard"}, "Backup")
                     if type(manifest["schema_version"]) is not int or manifest["schema_version"] != SCHEMA_VERSION:
-                        raise RequestError("Diese Backup-Version wird nicht unterstützt.")
+                        raise RequestError(Text("Diese Backup-Version wird nicht unterstützt.", "This backup version is unsupported."))
                     document = validate_dashboard(manifest["dashboard"], require_revision=True)
                 elif name.startswith("assets/"):
                     image_name = asset_path(name[len("assets/"):])
                     total_size += entry.file_size
                     validate_asset_budget(len(assets) + 1, total_size)
                     if not 0 < entry.file_size <= MAX_ASSET:
-                        raise RequestError("Ungültige Bildgröße im Backup.")
+                        raise RequestError(Text("Ungültige Bildgröße im Backup.", "Invalid image size in the backup."))
                     image = archive.read(entry)
                     validate_asset(image_name, image)
                     assets[image_name] = image
                 else:
-                    raise RequestError("Unerwartete Datei im Backup.")
+                    raise RequestError(Text("Unerwartete Datei im Backup.", "Unexpected file in the backup."))
             if document is None:
-                raise RequestError("Im Backup fehlt dashboard.json.")
+                raise RequestError(Text("Im Backup fehlt dashboard.json.", "The backup is missing dashboard.json."))
             return document, assets
     except (BadZipFile, EOFError, NotImplementedError, RuntimeError, OSError, UnicodeError, ZlibError):
-        raise RequestError("Ungültiges ZIP-Backup.") from None
+        raise RequestError(Text("Ungültiges ZIP-Backup.", "Invalid ZIP backup.")) from None
 
 
-def unknown_status(label="Noch nicht geprüft"):
+def unknown_status(label=Text("Noch nicht geprüft", "Not checked yet")):
     return {"state": "unknown", "label": label, "metrics": []}
 
 
 def clean_status(result, now):
     if not isinstance(result, dict):
-        raise RequestError("Ungültiger Status.")
+        raise RequestError(Text("Ungültiger Status.", "Invalid status."))
     state = result.get("state")
     if not isinstance(state, str) or state not in STATUS_STATES:
-        raise RequestError("Ungültiger Status.")
+        raise RequestError(Text("Ungültiger Status.", "Invalid status."))
     status = {"state": state, "label": text_value(result.get("label"), 160, "Status"), "metrics": []}
     video_id = result.get("latest_video_id")
     if isinstance(video_id, str) and public_youtube.VIDEO_ID.fullmatch(video_id):
         status["latest_video_id"] = video_id
     metrics = result.get("metrics", [])
     if not isinstance(metrics, list) or len(metrics) > 12:
-        raise RequestError("Ungültige Statuswerte.")
+        raise RequestError(Text("Ungültige Statuswerte.", "Invalid status values."))
     for metric in metrics:
         fields(metric, {"label", "value"}, {"label", "value"}, "Statuswert")
         value = metric["value"]
         if isinstance(value, str):
             value = text_value(value, 160, "Statuswert", blank=True)
         elif type(value) not in {int, float} or not math.isfinite(value):
-            raise RequestError("Ungültiger Statuswert.")
+            raise RequestError(Text("Ungültiger Statuswert.", "Invalid status value."))
         status["metrics"].append({"label": text_value(metric["label"], 100, "Bezeichnung"), "value": value})
     if result.get("detail") not in (None, ""):
         status["detail"] = text_value(result["detail"], 500, "Statusdetails")
@@ -672,7 +699,7 @@ class StatusPoller:
 
     def record(self, item_id, job, *, link_check):
         now = int(time.time())
-        status = unknown_status("Zeitlimit überschritten")
+        status = unknown_status(PROBE_TIMEOUT)
         if link_check:
             status["state"] = "down"
         if not job.timed_out:
@@ -682,24 +709,34 @@ class StatusPoller:
                     status = clean_status(result, now)
             except Exception as error:
                 logging.warning("Statusabfrage fehlgeschlagen (%s)", type(error).__name__)
-                status = unknown_status("Statusabfrage fehlgeschlagen")
+                status = unknown_status(PROBE_FAILED)
         self.store.write_status(item_id, job.signature, status, now, self.stale_after)
 
-    def snapshot(self, now=None):
+    def snapshot(self, now=None, *, language="de"):
         if now is None:
             now = int(time.time())
         items, cached = self.store.read_statuses()
         def status(item_id, item):
             signature, payload = cached.get(item_id, (None, None))
             if signature != fingerprint(item):
-                return {**unknown_status(), "checked_at": 0, "last_success": None}
+                return render_reading({**unknown_status(), "checked_at": 0, "last_success": None}, language)
+            if not payload.pop("localized", False):
+                if item["kind"] == "youtube":
+                    public_youtube.localize_legacy(payload)
+                elif adapter := getattr(self.provider, "localize_legacy", None):
+                    adapter(item, payload)
+                if item.get("check_link") and payload.get("failures"):
+                    for label in (LINK_REACHABLE, LINK_UNCONFIRMED, LINK_UNREACHABLE):
+                        if payload["label"] == label:
+                            payload["label"] = label
+                            break
             observed_at = payload.pop("observed_at", payload["checked_at"])
             poll_max_age = max(2 * LINK_CHECK_INTERVAL, self.stale_after) if item.get("check_link") else self.stale_after
             max_age = payload.pop("measurement_max_age", poll_max_age)
             if now - observed_at > max_age or now - payload["checked_at"] > poll_max_age:
                 payload["state"] = "stale"
-                payload["label"] = "Veraltet"
-            return payload
+                payload["label"] = Text("Veraltet", "Stale")
+            return render_reading(payload, language)
 
         result = {"items": {item_id: status(item_id, item) for item_id, item in items.items() if monitored(item)}}
         if self.infrastructure:
@@ -729,7 +766,7 @@ class Sessions:
 
     def login(self, password, address):
         if self.password_digest is None:
-            raise RequestError("Die Bearbeitung ist nicht eingerichtet.", HTTPStatus.SERVICE_UNAVAILABLE)
+            raise RequestError(Text("Die Bearbeitung ist nicht eingerichtet.", "Editing is not configured."), HTTPStatus.SERVICE_UNAVAILABLE)
         now = time.monotonic()
         with self.lock:
             self.attempts = {
@@ -737,11 +774,11 @@ class Sessions:
             }
             count, until = self.attempts.get(address, (0, now + 300))
             if count >= 8 or (address not in self.attempts and len(self.attempts) >= 1024):
-                raise RequestError("Zu viele Anmeldeversuche. Bitte später erneut versuchen.", HTTPStatus.TOO_MANY_REQUESTS)
+                raise RequestError(Text("Zu viele Anmeldeversuche. Bitte später erneut versuchen.", "Too many sign-in attempts. Try again later."), HTTPStatus.TOO_MANY_REQUESTS)
             candidate_digest = hashlib.sha256(password.encode("utf-8")).digest()
             if not hmac.compare_digest(self.password_digest, candidate_digest):
                 self.attempts[address] = (count + 1, until)
-                raise RequestError("Falsches Passwort.", HTTPStatus.UNAUTHORIZED)
+                raise RequestError(Text("Falsches Passwort.", "Incorrect password."), HTTPStatus.UNAUTHORIZED)
             self.attempts.pop(address, None)
             self.sessions = {token: until for token, until in self.sessions.items() if until > now}
             if len(self.sessions) >= 128:
@@ -844,6 +881,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.handle_http()
 
     def handle_http(self):
+        self.language = request_language(",".join(self.headers.get_all("Accept-Language", [])))
         try:
             path = unquote(urlsplit(self.path).path, errors="strict")
             if self.command in {"GET", "HEAD"}:
@@ -851,14 +889,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 self.write_route(path)
         except RequestError as error:
-            self.send_json({"error": str(error), **error.details}, error.status)
+            self.send_error_json(error)
         except (UnicodeError, ValueError):
-            self.send_json({"error": "Ungültige Anfrage."}, HTTPStatus.BAD_REQUEST)
+            self.send_error_json(RequestError(Text("Ungültige Anfrage.", "Invalid request.")))
         except (TimeoutError, BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except Exception:
             logging.exception("Dashboard-Anfrage fehlgeschlagen")
-            self.send_json({"error": "Die Anfrage konnte nicht verarbeitet werden."}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.send_error_json(RequestError(
+                Text("Die Anfrage konnte nicht verarbeitet werden.", "The request could not be processed."),
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            ))
+
+    def send_error_json(self, error):
+        data = {"error": error.localized(self.language), **error.details}
+        if isinstance(error.message, Text):
+            data["error_translations"] = {language: error.localized(language) for language in ("de", "en")}
+        self.send_json(data, error.status)
 
     def token(self):
         try:
@@ -871,40 +918,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def require_admin(self):
         self.require_write_access()
         if not self.server.sessions.authenticated(self.token()):
-            raise RequestError("Anmeldung erforderlich.", HTTPStatus.UNAUTHORIZED)
+            raise RequestError(Text("Anmeldung erforderlich.", "Sign-in required."), HTTPStatus.UNAUTHORIZED)
 
     def require_write_access(self):
         if self.server.read_only:
-            raise RequestError("Die Bearbeitung ist über HTTPS verfügbar.", HTTPStatus.FORBIDDEN)
+            raise RequestError(Text("Die Bearbeitung ist über HTTPS verfügbar.", "Editing is available over HTTPS."), HTTPStatus.FORBIDDEN)
 
     def require_mutation_header(self):
         self.require_write_access()
         origin_headers = self.headers.get_all("Origin", [])
         if self.headers.get_all("X-Dashboard-Request", []) != ["1"] or len(origin_headers) > 1:
-            raise RequestError("Anfrage nicht erlaubt.", HTTPStatus.FORBIDDEN)
+            raise RequestError(Text("Anfrage nicht erlaubt.", "Request not allowed."), HTTPStatus.FORBIDDEN)
         if origin_headers:
             scheme = "https" if self.server.sessions.secure else "http"
             expected = self.server.origin or f"{scheme}://{self.headers.get('Host', '')}"
             origin = canonical_origin(origin_headers[0])
             if origin is None or origin != canonical_origin(expected):
-                raise RequestError("Die Anfrage stammt von einer anderen Website.", HTTPStatus.FORBIDDEN)
+                raise RequestError(Text("Die Anfrage stammt von einer anderen Website.", "The request came from a different website."), HTTPStatus.FORBIDDEN)
 
     def request_body(self, maximum, content_types):
         if self.headers.get("Transfer-Encoding") is not None:
-            raise RequestError("Anfragen mit Transfer-Encoding werden nicht unterstützt.")
+            raise RequestError(Text("Anfragen mit Transfer-Encoding werden nicht unterstützt.", "Requests with Transfer-Encoding are unsupported."))
         if self.headers.get_content_type() not in content_types:
-            raise RequestError("Ungültiger Content-Type.", HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+            raise RequestError(Text("Ungültiger Content-Type.", "Invalid Content-Type."), HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
         lengths = self.headers.get_all("Content-Length", [])
         if len(lengths) != 1 or not re.fullmatch(r"[0-9]{1,9}", lengths[0]):
-            raise RequestError("Content-Length fehlt oder ist ungültig.", HTTPStatus.LENGTH_REQUIRED)
+            raise RequestError(Text("Content-Length fehlt oder ist ungültig.", "Content-Length is missing or invalid."), HTTPStatus.LENGTH_REQUIRED)
         size = int(lengths[0])
         if size < 1:
-            raise RequestError("Die Anfrage enthält keine Daten.")
+            raise RequestError(Text("Die Anfrage enthält keine Daten.", "The request contains no data."))
         if size > maximum:
-            raise RequestError("Die Anfrage ist zu groß.", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            raise RequestError(Text("Die Anfrage ist zu groß.", "The request is too large."), HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
         body = self.rfile.read(size)
         if len(body) != size:
-            raise RequestError("Die Anfrage ist unvollständig.")
+            raise RequestError(Text("Die Anfrage ist unvollständig.", "The request is incomplete."))
         return body
 
     def json_request(self, maximum=MAX_DOCUMENT):
@@ -923,7 +970,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/api/sources":
             self.send_json(self.server.poller.sources())
         elif path == "/api/status":
-            self.send_json(self.server.poller.snapshot())
+            self.send_json(self.server.poller.snapshot(language=self.language))
         elif path == "/api/backup":
             self.require_admin()
             export_date = time.strftime("%Y-%m-%d")
@@ -936,13 +983,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 name = asset_path(path[len("/assets/"):])
             except RequestError:
-                raise RequestError("Bild nicht gefunden.", HTTPStatus.NOT_FOUND) from None
+                raise RequestError(Text("Bild nicht gefunden.", "Image not found."), HTTPStatus.NOT_FOUND) from None
             data = self.server.store.asset(name)
             if data is None:
-                raise RequestError("Bild nicht gefunden.", HTTPStatus.NOT_FOUND)
+                raise RequestError(Text("Bild nicht gefunden.", "Image not found."), HTTPStatus.NOT_FOUND)
             self.send_data(data, ASSET_TYPES[Path(name).suffix.lower()], policy=IMAGE_POLICY)
         elif path == "/api" or path.startswith("/api/"):
-            raise RequestError("Endpunkt nicht gefunden.", HTTPStatus.NOT_FOUND)
+            raise RequestError(Text("Endpunkt nicht gefunden.", "Endpoint not found."), HTTPStatus.NOT_FOUND)
         else:
             self.send_static(path)
 
@@ -970,7 +1017,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             try:
                 channel = public_youtube.resolve_channel(query)
             except ValueError as error:
-                raise RequestError(str(error)) from None
+                message = error.args[0] if len(error.args) == 1 else str(error)
+                raise RequestError(message) from None
             self.send_json({"channel": channel})
         elif route == ("PUT", "/api/dashboard"):
             self.require_mutation_header()
@@ -990,13 +1038,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.server.poller.wake.set()
             self.send_json({**updated, "authenticated": True})
         else:
-            raise RequestError("Endpunkt nicht gefunden.", HTTPStatus.NOT_FOUND)
+            raise RequestError(Text("Endpunkt nicht gefunden.", "Endpoint not found."), HTTPStatus.NOT_FOUND)
 
     def send_static(self, path):
         name = "index.html" if path == "/" else path.removeprefix("/")
         target = (self.server.web_dir / name).resolve()
         if not target.is_relative_to(self.server.web_dir) or not target.is_file():
-            raise RequestError("Datei nicht gefunden.", HTTPStatus.NOT_FOUND)
+            raise RequestError(Text("Datei nicht gefunden.", "File not found."), HTTPStatus.NOT_FOUND)
         if target.suffix == ".js":
             media_type = "text/javascript"
         else:
@@ -1007,7 +1055,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_data(target.read_bytes(), media_type, policy=CONTENT_POLICY, referrer_policy=referrer_policy)
 
     def send_json(self, data, status=HTTPStatus.OK, *, headers=None):
-        self.send_data(json_bytes(data), "application/json; charset=utf-8", status, headers=headers)
+        self.send_data(json_bytes(data), "application/json; charset=utf-8", status, headers={
+            "Content-Language": self.language, "Vary": "Accept-Language", **(headers or {}),
+        })
 
     def send_data(self, data, media_type, status=HTTPStatus.OK, *, headers=None,
                   policy="default-src 'none'; frame-ancestors 'none'", referrer_policy="no-referrer"):
@@ -1035,7 +1085,7 @@ def admin_password():
         raw = file.read(4097)
     try:
         if len(raw) > 4096:
-            raise RequestError("Passwortdatei ist zu groß.")
+            raise RequestError(Text("Passwortdatei ist zu groß.", "The password file is too large."))
         password = text_value(raw.rstrip(b"\r\n").decode("utf-8"), 1024, "Admin-Passwort")
     except (UnicodeError, RequestError):
         raise SystemExit("ADMIN_PASSWORD_FILE enthält kein gültiges Passwort.") from None

@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import public_youtube
+from localization import render_reading
 
 
 CHANNEL = "UCyyyyyyyyyyyyyyyyyyyyyy"
@@ -36,6 +37,23 @@ class PublicYouTubeTests(unittest.TestCase):
         with public_youtube._lock:
             public_youtube._cache.clear()
         self.now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+
+    def test_localizes_cached_reading_without_translating_channel_or_video_name(self):
+        cached = {"state": "ok", "label": "Öffentliche YouTube-Feeds", "metrics": [
+            {"label": "Neue Videos (24 h)", "value": "Mindestens 15"},
+            {"label": "Neuester Upload", "value": "Mindestens 15"},
+            {"label": "Kanal", "value": "Unbekannt"},
+            {"label": "Veröffentlicht", "value": "25.11.2026 · 19:30 UTC"},
+        ]}
+        public_youtube.localize_legacy(cached)
+        reading = render_reading(cached, "en")
+        self.assertEqual(reading["label"], "Public YouTube feeds")
+        self.assertEqual(reading["metrics"], [
+            {"key": "new_videos_24h", "label": "New videos (24 h)", "value": "At least 15"},
+            {"key": "latest_upload", "label": "Latest upload", "value": "Mindestens 15"},
+            {"key": "channel", "label": "Channel", "value": "Unbekannt"},
+            {"key": "published", "label": "Published", "value": "2026-11-25 · 19:30 UTC"},
+        ])
 
     def test_resolves_canonical_public_references_to_a_shared_validated_feed(self):
         with patch.object(public_youtube, "_read_public", return_value=feed()) as request:

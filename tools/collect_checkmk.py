@@ -6,10 +6,16 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from collections import Counter
 from pathlib import Path
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from localization import Text, encode_translations, number, phrase
 
 
 MAX_BODY = 1024 * 1024
@@ -54,11 +60,12 @@ def summarize(hosts, services, now):
     if overdue or hosts_without_current_check or service_states[-1]:
         state = "warning"
     return measurement(state, now, (
-        ("Hosts UP", f"{host_states[0]} / {len(hosts)}"),
-        ("Dienste OK", f"{service_states[0]} / {len(services)}"),
-        ("Warnungen / kritisch", f"{service_states[1]} / {service_states[2]}"),
-        ("Unbekannt / ausstehend", f"{service_states[3]} / {service_states[-1]}"),
-    ), detail=(f"{overdue} überfällige Dienste, {hosts_without_current_check} Hosts ohne aktuellen Check"
+        (Text("Hosts UP", "Hosts up"), f"{host_states[0]} / {len(hosts)}"),
+        (Text("Dienste OK", "Services OK"), f"{service_states[0]} / {len(services)}"),
+        (Text("Warnungen / kritisch", "Warning / critical"), f"{service_states[1]} / {service_states[2]}"),
+        (Text("Unbekannt / ausstehend", "Unknown / pending"), f"{service_states[3]} / {service_states[-1]}"),
+    ), detail=(phrase("{} überfällige Dienste, {} Hosts ohne aktuellen Check",
+                      "{} overdue services, {} hosts without a current check", overdue, hosts_without_current_check)
                if overdue or hosts_without_current_check else None))
 
 
@@ -69,19 +76,21 @@ def dns_snapshot(rows, host, now):
     state, stamp, perf = checks[0]
     if not -10 <= now - stamp <= 180:
         return measurement("stale", stamp)
-    status, value = {0: ("ok", "Antwortet"), 1: ("warning", "Warnung"),
-                     2: ("down", "Fehlgeschlagen")}.get(state, ("unknown", "Unbekannt"))
+    status, value = {
+        0: ("ok", Text("Antwortet", "Responding")), 1: ("warning", Text("Warnung", "Warning")),
+        2: ("down", Text("Fehlgeschlagen", "Failed")),
+    }.get(state, ("unknown", Text("Unbekannt", "Unknown")))
     latency = re.search(r"(?:^| )time=([0-9]+(?:\.[0-9]+)?)s(?:;| |$)", perf)
     if status == "ok" and latency:
-        value += f" · {float(latency[1]) * 1000:.0f} ms"
-    return measurement(status, stamp, (("DNS-Auflösung", value),))
+        value = phrase("{} · {} ms", "{} · {} ms", value, number(float(latency[1]) * 1000, grouping=False))
+    return measurement(status, stamp, ((Text("DNS-Auflösung", "DNS resolution", key="dns_resolution"), value),))
 
 
 def write_snapshot(directory, name, data):
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory, delete=False) as stream:
         temporary = Path(stream.name)
         try:
-            json.dump(data, stream, ensure_ascii=False, allow_nan=False)
+            json.dump(encode_translations(data), stream, ensure_ascii=False, allow_nan=False)
             stream.write("\n")
             stream.flush()
             os.fchmod(stream.fileno(), 0o644)
@@ -138,7 +147,8 @@ def main():
     try:
         snapshots = collect_snapshots(command, args.dns)
         if args.preview:
-            print(json.dumps(snapshots, ensure_ascii=False, allow_nan=False))
+            print(json.dumps({name: encode_translations(snapshot) for name, snapshot in snapshots.items()},
+                             ensure_ascii=False, allow_nan=False))
         else:
             for name, snapshot in snapshots.items():
                 write_snapshot(args.directory, name, snapshot)

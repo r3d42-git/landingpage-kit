@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Install your own Landingpage with Docker Compose, add service cards, connect data sources, and back up your dashboard.">
+<title>Landingpage · Handbook</title>
+<link rel="alternate" hreflang="de" href="../index.html">
+<link rel="stylesheet" href="../handbuch.css"><script defer src="../handbuch.js"></script>
+</head>
+<body>
+<a class="skip" href="#inhalt">Skip to content</a>
+<header><div class="bar"><a class="wordmark" href="#anfang"><i aria-hidden="true"></i> Landingpage</a><div class="bar-links"><nav aria-label="Project"><a href="#dateien">Downloads</a><a href="https://github.com/r3d42-git/landingpage-kit">GitHub ↗</a></nav><nav class="languages" aria-label="Handbook language"><a href="../index.html" lang="de" hreflang="de" data-language-link>Deutsch</a><span aria-current="page">English</span></nav></div></div></header>
+<main id="inhalt" tabindex="-1">
+<div class="hero" id="anfang">
+<div class="herotext"><p class="eyebrow">Self-hosting handbook</p>
+<h1>Your own<br>Landingpage.</h1>
+<p class="intro">Open your services, see their status, and organize them in one place. Follow this guide to set up the dashboard on your own server.</p>
+<div class="actions"><a class="primary" href="#installation">Start installation <span aria-hidden="true">↓</span></a><a href="#agent">Set up with an agent</a></div></div>
+<aside class="overview" aria-label="Access after installation"><div class="diagram-head"><span aria-hidden="true" class="server-icon"></span><strong>Your instance</strong></div>
+<div class="routes"><div><b>Open dashboard</b><small>Read-only access</small><code>HTTP · 8080</code></div><div><b>Edit cards</b><small>With editor password</small><code>HTTPS · 8443</code></div></div></aside>
+</div>
+<div class="layout">
+<nav class="contents" aria-label="Contents"><strong>In this handbook</strong>
+<a href="#installation">Installation</a><a href="#agent">Set up with an agent</a><a href="#editor">Get started with the editor</a><a href="#kacheln">Card types</a><a href="#messwerte">Connect data sources</a><a href="#betrieb">Backups and updates</a><a href="#hilfe">Troubleshooting</a><a href="#dateien">Project files</a>
+</nav>
+<div class="chapters">
+<section id="installation"><h2>Installation</h2>
+<p>You’ll need a host running Docker with the Compose plugin. The default installation binds both ports to the loopback address so you can access the dashboard directly on the host. See the LAN settings below to connect from other devices. Docker Desktop includes Compose. For Linux servers, Docker Engine and the Compose plugin are available separately. <a href="https://docs.docker.com/engine/install/">Install Docker Engine</a> · <a href="https://docs.docker.com/compose/install/">Install Docker Compose</a></p>
+<p>These commands use a Unix shell. On Windows, you can run them in WSL with Docker integration enabled.</p>
+<h3>1. Prepare the files</h3>
+<p>Download the <a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.1.0/landingpage-kit-1.1.0.zip">version 1.1.0 installation package</a>. Extract it into a new directory and open a terminal there. Run the Compose commands from the directory that contains <code>compose.yaml</code>.</p>
+<pre><code>docker compose version
+docker info
+cp examples/en/dashboard.example.yaml dashboard.yaml
+test -e .env || cp examples/en/compose.env.example .env</code></pre>
+<p>Set <code>DASHBOARD_LANGUAGE=en</code> in <code>.env</code> to use English for the command-line tools. The English environment example already includes this setting. If <code>.env</code> exists, keep its existing settings and set the language in that file.</p>
+<p>The individual YAML files and the full package are also available under <a href="#dateien">Project files</a>. To read this handbook offline, open <code>docs/en/index.html</code> from the extracted package.</p>
+<p>Open <code>dashboard.yaml</code> in a text editor. Customize the title, categories, and links, or try the example as it is. Keep the existing IDs when updating entries.</p>
+<h3>2. Set up the dashboard and editor</h3>
+<pre><code>docker compose pull
+docker compose run --rm --no-deps -T landingpage python tools/configure.py init &lt; dashboard.yaml
+docker compose run --rm --no-deps landingpage python tools/configure.py password
+docker compose up -d
+docker compose ps</code></pre>
+<p>Choose a password of at least 16 characters with no leading or trailing spaces. The password command prompts for the editor password twice without displaying it and creates the local TLS certificate for a new installation. Store the password in your password manager. Use the initialization command to seed a new database.</p>
+<h3>3. Check the dashboard and sign in</h3>
+<p>On the same computer, open <a href="http://127.0.0.1:8080/">http://127.0.0.1:8080/</a>. Select <b>Edit</b> to open the <a href="https://localhost:8443/?edit=1">editor over HTTPS</a>. The HTTP port serves the read-only dashboard. The editor uses a certificate issued by a local certificate authority (CA) created for your installation. Export the CA’s public certificate on the installation host. Transfer it to your browser device over a trusted connection, verify the CA’s SHA-256 fingerprint, and trust the CA on that device. You can also pass the certificate to curl for an individual request.</p>
+<pre><code>docker compose exec -T landingpage python tools/configure.py certificate &gt; landingpage-local.crt
+openssl x509 -in landingpage-local.crt -noout -fingerprint -sha256
+curl --cacert landingpage-local.crt https://localhost:8443/</code></pre>
+<details><summary>Allow access from your LAN</summary><p>Choose a local address on the host and a hostname that other devices on the LAN can resolve to it. Add these variables to your <code>.env</code> file next to <code>compose.yaml</code>. Replace the example address and hostname with your own, and use available ports.</p>
+<pre><code>DASHBOARD_BIND=192.0.2.10
+DASHBOARD_EDIT_HOST=dashboard.home.arpa
+DASHBOARD_HTTP_PORT=8080
+DASHBOARD_HTTPS_PORT=8443</code></pre>
+<p>On the host, generate a certificate for the selected hostname, recreate the container with the new settings, and export the new CA as shown above. Update the trust settings on your devices. Limit access to the intended network with your firewall. Anyone who can reach the read-only address can see the published cards and metrics.</p>
+<pre><code>docker compose run --rm --no-deps landingpage python tools/configure.py tls-local --host dashboard.home.arpa
+docker compose up -d --force-recreate</code></pre></details>
+<details><summary>Load the container image offline or build it locally</summary><p>Download the image archive from the release for your Docker host’s architecture (<code>amd64</code> for x86-64 or <code>arm64</code> for ARM64) and verify its SHA-256 checksum against <code>SHA256SUMS</code>. Transfer the archive and installation package to the target host. Load the image there, then continue at the <code>configure.py init</code> command.</p>
+<pre><code>docker load -i landingpage-kit-linux-amd64.tar.gz</code></pre>
+<p>For a local build, extract the <a href="https://github.com/r3d42-git/landingpage-kit/archive/refs/tags/v1.1.0.zip">source code for the same version</a> and prepare the files as shown in step 1. In step 2, run the build command below in place of <code>docker compose pull</code>. Include both <code>-f</code> options in every subsequent Compose command. The build needs access to the base images and package repositories.</p>
+<pre><code>docker compose -f compose.yaml -f deploy/compose.build.yaml build</code></pre></details>
+</section>
+<section id="agent"><h2>Set up with an agent</h2>
+<p>Paste this request into an agent you trust to work on your target system. Include the directory where you want the project installed. A text-only assistant can give you the steps to run yourself.</p>
+<div class="prompt"><div class="promptbar"><strong>Installation request</strong><button hidden id="copy" type="button" aria-controls="auftrag">Copy prompt</button></div><p id="auftrag">Set up https://github.com/r3d42-git/landingpage-kit on my target system by following the English handbook. Check the operating system, Docker Compose, available ports, and existing files. Ask me which directory to install in and whether I need access from this computer only or also from my LAN. Use the official files for the selected release and the bundled English example dashboard. Preserve any existing installations, bind only to the address we agree on, and keep passwords and private keys out of the chat. Set up the service, verify the HTTP dashboard and the HTTPS editor, and show me the URLs, how to manage the editor password, and how to back up and update the installation. Tell me exactly what I need to do if a step requires local input. We’ll set up optional data sources after I provide the targets.</p><span id="copystatus" role="status" data-copied="Installation request copied." data-selected="The request is selected. Use the context menu or your keyboard to copy it."></span></div></section>
+<section id="editor"><h2>Get started with the editor</h2>
+<p>The bundled English example opens as “My dashboard.” Under <b>Getting started</b>, you’ll find the handbook and “Example website.” <b>My services</b> is an empty category ready for your first cards. Add a card there or create another category.</p>
+<p>On your first visit, the dashboard uses the first supported language in your browser settings and defaults to German. Use the globe control marked <b>DE</b> or <b>EN</b> to switch between German and English. The browser remembers your choice. Sample content and entries you create keep their own language.</p>
+<figure class="board-shot"><a href="../abbildungen/dashboard-en.png" aria-label="Open the example dashboard image at full size"><img loading="lazy" alt="Example dashboard with three categories and nine link cards" width="1440" height="560" src="../abbildungen/dashboard-en.png"></a><figcaption>An example dashboard with custom categories and nine links. Open the image for a closer look.</figcaption></figure>
+<ol><li>Open the dashboard and select <b>Edit</b>. The browser opens the sign-in screen over HTTPS. Enter the editor password you set during installation.</li>
+<li>At the bottom of the page, select <b>Add category</b>. Enter a name such as “Tools,” choose a <b>Category icon</b>, and select <b>Apply</b>.</li>
+<li>Select the plus button next to “Tools.” Enter “My wiki” as the <b>Name</b> and your wiki URL as the <b>Address</b>. Add a description and leave <b>Monitoring</b> set to <b>Link only</b>. Under <b>More options</b>, you can add a tag and choose how the link opens.</li>
+<li>Select <b>Apply</b>, then <b>Preview</b>. Select <b>Continue editing</b> to go back to the draft. <b>Save</b> publishes your changes to everyone who uses the instance.</li></ol>
+<p>Use a card’s pencil button to edit it. <b>Move</b> opens the category and position controls, including on phones. Use the pencil next to a category name to change its icon, name, or position. In edit mode, <b>Settings</b> lets you change the page title and subtitle.</p>
+<p>In the read-only view, use search to filter services. Select a status in the header to show matching cards. Select it again to clear the status filter.</p></section>
+<section id="kacheln"><h2>Choose a card type</h2>
+<p>The card’s address opens the destination when you select it. The <b>Monitoring</b> setting controls what additional information the card displays.</p>
+<dl class="tiles">
+<dt>Link only</dt><dd>A bookmark for a wiki, documentation, or web interface. <b>Check availability</b> probes the URL from the server about every five minutes. Two consecutive failures mark the site as down. Public HTTP(S) addresses on standard ports are supported. Internal destinations and other ports require explicit permission.</dd>
+<dt>HTTP availability</dt><dd>Checks a permitted web address. Choose <b>Service address</b> or a configured HTTP data source. A separate source lets the card open a web interface while the server checks a dedicated health endpoint.</dd>
+<dt>Pi-hole</dt><dd>Choose a Pi-hole data source for DNS queries and blocked requests. Expand the card to see additional metrics. The adapter needs access to a compatible statistics API.</dd>
+<dt>NAS</dt><dd>Choose a storage source to show measured capacity and usage. To monitor a NAS, use a local snapshot or SNMP storage metrics available through Prometheus.</dd>
+<dt>Service metrics</dt><dd>Shows named values from a data source. Examples include active scrape targets on a Prometheus server, two TCP checks for a host, and custom metrics from a snapshot file.</dd>
+<dt>YouTube channels</dt><dd>Under <b>Add channel</b>, enter a public @handle, channel ID, or channel URL. Select <b>Add</b>, then <b>Apply</b> and <b>Save</b>. A card can follow up to twelve channels. The server reads public feeds to show new videos from the last 24 hours and the latest upload.</dd>
+</dl></section>
+<section id="messwerte"><h2>Connect a data source</h2>
+<p>Each source needs a unique <code>id</code> and a display name (<code>label</code>). The <code>kind</code> selects an adapter, and <code>display_kind</code> makes the source available for the matching card type in the editor. Keep your sources in your own <code>integrations.yaml</code>. Copy the example file, update its values, and import the complete list of sources you want to use.</p>
+<pre><code>cp examples/en/integrations.example.yaml integrations.yaml</code></pre>
+<p>For a first test, the example includes <b>Dashboard HTTP status</b>. Import the source with the commands in step 3 below. Add a card with the address <code>/healthz</code> and select <b>HTTP availability</b> and the <b>Dashboard HTTP status</b> source. After you save, the container checks its own health endpoint.</p>
+<h3>Example A · Check a service over HTTP</h3>
+<ol><li>Find the health endpoint for one of your services. This example expects a successful JSON response with a <code>status</code> field set to <code>UP</code>. Replace the example domain in both places with your own.</li>
+<li>Add the origin (scheme, host, and port if needed) and the source entry to the existing lists. If you are starting with an empty file, you can use the following configuration.</li></ol>
+<pre><code>allowed_endpoints:
+  - https://wiki.example.org
+sources:
+  - id: wiki-status
+    label: Wiki status
+    kind: http
+    display_kind: http
+    url: https://wiki.example.org/health
+    expect_json:
+      status: UP</code></pre>
+<p>For a check that only looks at the HTTP status code, omit <code>expect_json</code>. Status codes 200 and 204 count as successful by default.</p>
+<ol start="3"><li>Save the file as <code>integrations.yaml</code>. Import it, check the available sources, and reopen the editor.</li></ol>
+<pre><code>docker compose run --rm --no-deps -T landingpage python tools/configure.py sources &lt; integrations.yaml
+docker compose exec -T landingpage python manage.py sources</code></pre>
+<ol start="4"><li>Select the pencil button on the wiki card. Set <b>Monitoring</b> to <b>HTTP availability</b> and <b>Data source</b> to <b>Wiki status</b>. Select <b>Apply</b> and <b>Save</b>. The measured status appears after the first check. The container needs DNS and network access to the service.</li></ol>
+<h3>Example B · Display disk usage from the host</h3>
+<p>A snapshot lets a card display measurements from the host operating system. The bundled collector measures disk usage for the filesystem selected with <code>--path</code>. Run it on the host with Python 3. The metrics directory is mounted read-only in the container.</p>
+<pre><code>mkdir -p instance/metrics
+python3 examples/write-disk-snapshot.py ./instance/metrics/disk-usage.json --path /
+docker compose -f compose.yaml -f deploy/compose.metrics.yaml up -d</code></pre>
+<p>Keep using the same Compose files for subsequent commands. On a Linux host, for example, set <code>COMPOSE_FILE=compose.yaml:deploy/compose.metrics.yaml</code> in <code>.env</code>. The bundled <code>integrations.example.yaml</code> includes a disk usage source. If you maintain your own source list, add this entry once under <code>sources</code>.</p>
+<pre><code>  - id: disk-usage
+    label: Disk usage
+    kind: snapshot
+    display_kind: nas
+    file: disk-usage.json
+    max_age: 180</code></pre>
+<ol><li>Import the sources with <code>configure.py sources</code> as in the HTTP example. The <code>manage.py sources</code> output should list this source as <code>nas</code>.</li><li>Add a card in the editor. Enter its name and destination address, choose <b>NAS</b>, and select the source under <b>Data source</b>. Select <b>Apply</b> and <b>Save</b>.</li><li>For regular measurements, schedule the Python command on the host, for example once a minute via cron or a systemd timer. Use absolute paths for Python, the script, and the output file. With <code>max_age: 180</code>, the dashboard marks data as stale after three minutes without a new measurement.</li></ol>
+<details><summary>Example cron job that runs every minute</summary><p>Run <code>command -v python3</code> and <code>pwd</code> from the installation directory to find the paths. Use <code>crontab -e</code> to open the crontab of the user who can write to the metrics directory. Add the following line with your own paths. After two minutes, check the timestamp on <code>disk-usage.json</code>.</p>
+<pre><code>* * * * * /usr/bin/python3 /opt/landingpage-kit/examples/write-disk-snapshot.py /opt/landingpage-kit/instance/metrics/disk-usage.json --path /</code></pre></details>
+<p>Other collectors can write the same format. The <code>observed_at</code> field is the measurement time in Unix seconds. Set <code>state</code> to <code>ok</code>, <code>warning</code>, <code>down</code>, <code>unknown</code>, or <code>stale</code>. The <code>metrics</code> array contains objects with <code>label</code> and <code>value</code> keys. The optional <code>progress</code> value ranges from 0 to 100. Write to a temporary file first, then replace the destination atomically.</p>
+<p>To publish your own bilingual readings, add <code>label_en</code> and, for text values, <code>value_en</code> to a metric. For example, <code>{"label":"Belegt","label_en":"Used","value":"2,5 GiB","value_en":"2.5 GiB"}</code> displays the label and value in the selected interface language. A custom label without a translation appears as entered in both languages.</p>
+<h3>Example C · Connect Pi-hole and Prometheus</h3>
+<p>Merge these entries into your existing source list or use the example to start a new <code>integrations.yaml</code>. Substitute the hostnames and ports from your network. For HTTPS, the container must trust the destination’s certificate.</p>
+<pre><code>allowed_endpoints:
+  - https://dns.home.arpa
+  - http://prometheus.home.arpa:9090
+sources:
+  - id: dns-statistics
+    label: DNS statistics
+    kind: pihole
+    display_kind: pihole
+    url: https://dns.home.arpa/api/stats/summary
+  - id: prometheus-targets
+    label: Prometheus targets
+    kind: prometheus
+    display_kind: service
+    url: http://prometheus.home.arpa:9090</code></pre>
+<p>Pi-hole v6 exposes its statistics summary at <code>/api/stats/summary</code>. The direct adapter expects the monitoring path to be accessible without signing in or creating a session. Check whether your monitoring setup allows this access. For a protected API, use a host-side collector with credentials kept on the host. Have it write a snapshot as in Example B. For the Pi-hole card, set <code>display_kind</code> to <code>pihole</code>. Give the query and blocked-query metrics a <code>key</code>, <code>label</code>, and <code>label_en</code>. Use the keys <code>queries</code> and <code>blocked</code> so both metrics appear in the main view of the card. <a href="https://docs.pi-hole.net/api/">Pi-hole API and local documentation</a></p>
+<pre><code>docker compose run --rm --no-deps -T landingpage python tools/configure.py check-sources &lt; integrations.yaml
+docker compose run --rm --no-deps -T landingpage python tools/configure.py sources &lt; integrations.yaml
+docker compose exec -T landingpage python manage.py sources</code></pre>
+<ol><li><b>Add a DNS card.</b> Select <b>Edit</b> and the plus button next to a category. Name the card “DNS filter” and enter the URL of your Pi-hole interface as its address. Set <b>Monitoring</b> to <b>Pi-hole</b> and choose <b>DNS statistics</b> as the <b>Data source</b>. Select <b>Apply</b> and <b>Save</b>. The read-only view shows DNS queries and the share that were blocked. <b>More metrics</b> shows additional details, including the number of active clients.</li>
+<li><b>Add a service metrics card.</b> Use the plus button to create a second card called “Monitoring” with the URL of your Prometheus interface. Choose <b>Service metrics</b> and the <b>Prometheus targets</b> source, then select <b>Apply</b> and <b>Save</b>. The adapter reads <code>/-/ready</code> and <code>/api/v1/targets?state=active</code>. After the first check, the card shows how many scrape targets are up or down.</li></ol>
+<h3>Other adapters</h3>
+<dl class="tiles"><dt>TCP port and host</dt><dd><code>tcp</code> uses a <code>tcp://</code> URL with an explicit port. <code>host</code> requires two entries under <code>targets</code>, each with a <code>label</code> and a <code>url</code> for the same host on a different port. Allow each origin individually under <code>allowed_endpoints</code>.</dd>
+<dt>Pi-hole</dt><dd><code>kind: pihole</code> reads a compatible statistics API at the configured <code>url</code>. Optionally provide a <code>blocking_url</code> on the same origin and a local <code>dns_file</code> to add the blocking state and a DNS check.</dd>
+<dt>Prometheus and SNMP storage</dt><dd>Set <code>url</code> to the Prometheus base URL for both <code>prometheus</code> and <code>snmp_volume</code>. For <code>snmp_volume</code>, also specify <code>job</code> and <code>instance</code>, and use the value of <code>hrStorageDescr</code> for <code>volume</code>. The exporter must supply the selected volume’s size, used units, and allocation unit size.</dd>
+<dt>Bundled host collectors</dt><dd>The utilities in <code>tools/</code> can read Checkmk Livestatus data, Proxmox metrics, or storage usage over a restricted SSH connection. See their options with <code>python3 tools/collect_checkmk.py --help</code>, <code>python3 tools/platform_metrics.py --help</code>, or <code>python3 tools/collect_ssh_storage.py --help</code>. Manage credentials, private keys, and monitoring permissions on the host.</dd></dl>
+</section>
+<section id="betrieb"><h2>Backups and updates</h2>
+<h3>Export cards and logos</h3>
+<p>Save your draft and, while signed in, open <b>Settings → Backup → Export</b>. The ZIP file contains the saved categories, cards, and local logos. To import it, select <b>Restore</b>, open your ZIP file, and confirm that you want to replace the current content. Back up the current dashboard first.</p>
+<pre><code>umask 077
+docker compose exec -T landingpage python manage.py backup &gt; dashboard.zip
+docker compose exec -T landingpage python manage.py restore --confirm &lt; dashboard.zip</code></pre>
+<h3>Back up and restore the entire instance</h3>
+<p>The Compose volume named <code>dashboard-data</code> contains the SQLite database, active sources, seed data, editor password, and private TLS key. Stop the service for a consistent backup. Choose a new filename for each backup. Restart the app after exporting and check the archive contents.</p>
+<pre><code>umask 077
+docker compose stop landingpage
+docker compose run --rm --no-deps -T landingpage tar -C /data -czf - . &gt; volume-backup.tar.gz
+docker compose start landingpage
+tar -tzf volume-backup.tar.gz</code></pre>
+<p>Keep the archive encrypted and restrict access to it. Separately back up your <code>.env</code>, YAML files, local collectors, schedules, and external metrics. Record the image version you are using.</p>
+<p>Test the restore in a new installation directory with the same Compose file and image version. Copy your trusted backup there. Use a new Compose project name to create a separate volume and choose available loopback ports. Before starting, verify the bind address and check that the restored certificate covers the editor hostname.</p>
+<pre><code>docker compose -p landingpage-restore run --rm --no-deps -T landingpage tar -C /data -xzf - &lt; volume-backup.tar.gz
+DASHBOARD_BIND=127.0.0.1 DASHBOARD_HTTP_PORT=18080 DASHBOARD_HTTPS_PORT=18443 docker compose -p landingpage-restore up -d
+docker compose -p landingpage-restore exec -T landingpage python manage.py show</code></pre>
+<p>Open the restored dashboard on port 18080 and check the categories and logos. Sign in and check that you can edit. To stop the test instance, run <code>docker compose -p landingpage-restore stop</code>.</p>
+<h3>Change the password and renew the certificate</h3>
+<p>Set a new password on the Docker host, then restart the service to load it. You can use the same steps if you forgot your editor password.</p>
+<pre><code>docker compose run --rm --no-deps landingpage python tools/configure.py password
+docker compose restart landingpage</code></pre>
+<p>The local server certificate is valid for one year. To renew it, run <code>configure.py tls-local</code> as shown in the LAN section, including every required <code>--host</code> argument. Restart the service and export the new CA for your devices.</p>
+<h3>Upgrade to a new version</h3>
+<ol><li>Back up the ZIP and the volume. Record the current image tag and read the release notes.</li><li>Update the Compose configuration in the existing installation directory with the files for the new version. Keep your <code>.env</code>, any additional Compose files, and the Compose project name. Changing the project name can create a new volume.</li>
+<li>Pull the target image and recreate the service. Check the cards and the HTTPS editor afterward.</li></ol>
+<pre><code>docker compose pull
+docker compose up -d
+docker compose ps
+docker compose logs --tail 50 landingpage</code></pre>
+<h3>Update the dashboard with YAML later</h3>
+<p>The alternative template <code>examples/en/dashboard-monitoring.example.yaml</code> describes a complete dashboard with the <code>dashboard-health</code> and <code>disk-usage</code> data sources. You can copy individual card definitions into your own YAML file.</p><p>After the first startup, the dashboard lives in SQLite. To make a YAML update, compare the complete dashboard you want with the saved version. Review any entries the preview would remove. When applying the changes, replace <code>N</code> with the revision shown in the preview.</p>
+<pre><code>docker compose exec -T landingpage python tools/configure.py preview &lt; dashboard.yaml
+docker compose exec -T landingpage python tools/configure.py apply --revision N &lt; dashboard.yaml</code></pre>
+<p>If there is a revision conflict, generate a new preview and reconcile any changes made in the meantime.</p>
+</section>
+<section id="hilfe"><h2>Troubleshooting</h2>
+<details><summary>The dashboard won’t load</summary><p>From the installation directory, run <code>docker compose ps</code> and <code>docker compose logs --tail 50 landingpage</code>. Check which host ports are in use, the configured bind address, and whether the URL uses HTTP or HTTPS as expected. With a loopback bind address, access the dashboard directly on the host.</p></details>
+<details><summary>The editor opens the wrong address or reports a certificate error</summary><p>Compare the hostname or IP address and HTTPS port in the link with your installation. The certificate must cover that address. Export the current local CA as shown in the installation section. Compare its SHA-256 fingerprint through a trusted connection to the host and make sure your browser trusts that specific CA.</p><pre><code>openssl x509 -in landingpage-local.crt -noout -fingerprint -sha256</code></pre></details>
+<details><summary>A data source is missing or a value is stale</summary><p>Check your sources YAML, the output of <code>manage.py sources</code>, and the selected card type. An allowed HTTP origin must match the destination’s origin exactly. For snapshots, check the filename, read permissions, and timestamp. “Stale” means the latest measurement is older than the configured limit. Run <code>docker compose exec -T landingpage python manage.py status</code> to inspect the current states.</p></details>
+<details><summary>My changes disappeared after reloading</summary><p><b>Apply</b> updates the draft. Select <b>Save</b> to write it to the shared database. If the editor reports a revision conflict, make a note of your changes, load the current version, and apply your changes again. Seed data is read when the database is first created.</p></details></section>
+<section id="dateien"><h2>Project files</h2>
+<p>The installation package includes the Compose configuration, examples, and helper files. You can also download the individual YAML files.</p>
+<ul><li><a href="../downloads/en/dashboard.example.yaml" download>Dashboard with sample cards (YAML)</a></li>
+<li><a href="../downloads/en/dashboard-monitoring.example.yaml" download>Alternative dashboard with HTTP and storage cards (YAML)</a></li>
+<li><a href="../downloads/en/integrations.example.yaml" download>Example data sources (YAML)</a></li>
+<li><a href="../downloads/compose.yaml" download>Docker Compose (YAML)</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.1.0/landingpage-kit-1.1.0.zip">Version 1.1.0 installation package (ZIP)</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/tag/v1.1.0">Release with image archives and SHA-256 checksums</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/tree/v1.1.0">Version 1.1.0 source code</a> · <a href="https://github.com/r3d42-git/landingpage-kit/blob/v1.1.0/LICENSE">GPLv3 license</a></li></ul>
+</section>
+</div></div></main>
+<footer><span>Landingpage · Handbook</span><a href="#anfang">Back to top ↑</a></footer>
+</body></html>

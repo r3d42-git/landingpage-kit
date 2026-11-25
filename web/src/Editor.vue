@@ -1,6 +1,7 @@
 <script setup>
+import {message,t} from './i18n.js'
 import {computed,onBeforeUnmount,ref,watch} from 'vue'
-import {api,canCheckLink,categoryIcons,copy,entryIcon,id,localLogo,safeLink,sameLinkCheck,sameYouTubeChannels,youtubeChannelLimit} from './model.js'
+import {api,apiError,canCheckLink,categoryIcons,copy,entryIcon,id,localLogo,safeLink,sameLinkCheck,sameYouTubeChannels,youtubeChannelLimit} from './model.js'
 import Glyph from './Glyph.vue'
 import Logo from './Logo.vue'
 import ServiceCard from './ServiceCard.vue'
@@ -69,16 +70,16 @@ async function addChannel(){
     const {channel}=await api('youtube/resolve','POST',{input},request.signal)
     if(channelRequest!==request)return
     if(!channel || !/^UC[A-Za-z0-9_-]{22}$/.test(channel.id) || typeof channel.name!=='string' || !channel.name.trim()){
-      channelError.value='Der Kanal konnte nicht erkannt werden.'
+      channelError.value=message('Could not identify the channel.')
     }else if(channels.value.some(existing=>existing.id===channel.id)){
-      channelError.value='Dieser Kanal ist bereits hinzugefügt.'
+      channelError.value=message('This channel has already been added.')
     }else{
       form.value.channels=[...channels.value,{id:channel.id,name:channel.name}]
       channelInput.value=''
-      channelMessage.value='Kanal hinzugefügt.'
+      channelMessage.value=message('Channel added.')
     }
   }catch(e){
-    if(channelRequest===request)channelError.value=request.signal.aborted?'Die Kanalabfrage dauert zu lange. Bitte erneut versuchen.':e.message
+    if(channelRequest===request)channelError.value=request.signal.aborted?message('The channel lookup timed out. Try again.'):apiError(e)
   }finally{
     clearTimeout(timeout)
     if(channelRequest===request){
@@ -90,95 +91,95 @@ async function addChannel(){
 function removeChannel(channel){
   form.value.channels=channels.value.filter(existing=>existing.id!==channel.id)
   channelError.value=''
-  channelMessage.value='Kanal entfernt.'
+  channelMessage.value=message('Channel removed.')
 }
 function submit(){
   if(resolving.value)return
   const value=copy(form.value)
   value.name=value.name.trim()
-  if(!value.name) {error.value='Bitte einen Namen eingeben.';return}
+  if(!value.name) {error.value=message('Enter a name.');return}
   if(!move && !groupMode){
     value.url=value.url.trim()
-    if(!safeLink(value.url) || !/^(https?:\/\/|\/(?!\/))/i.test(value.url)) {error.value='Bitte eine HTTP(S)-Adresse oder einen lokalen Pfad mit / angeben.';return}
-    if(needsSource.value && !value.source) {error.value='Bitte eine verfügbare Messquelle auswählen.';return}
+    if(!safeLink(value.url) || !/^(https?:\/\/|\/(?!\/))/i.test(value.url)) {error.value=message('Enter an HTTP(S) address or a local path starting with /.');return}
+    if(needsSource.value && !value.source) {error.value=message('Select an available data source.');return}
     if(value.kind==='link' || !value.source) delete value.source
     if(value.kind==='link' && value.check_link===true){
-      if(!linkCheckAvailable.value) {error.value='Für die Erreichbarkeitsprüfung bitte eine vollständige HTTP(S)-Adresse angeben.';return}
+      if(!linkCheckAvailable.value) {error.value=message('Enter a complete HTTP(S) address for the availability check.');return}
     }else delete value.check_link
     if(value.kind==='youtube'){
       if(channelInput.value.trim()){
-        channelError.value ||= 'Bitte den eingegebenen Kanal hinzufügen oder das Eingabefeld leeren.'
+        channelError.value ||= message('Add the channel you entered or clear the input.')
         return
       }
       value.channels=channels.value
     }else delete value.channels
   }
-  if(!move && value.logo && value.logo!==initial.logo && !localLogo(value.logo)) {error.value='Bitte eine lokale Logo-Datei unter /assets/ angeben.';return}
+  if(!move && value.logo && value.logo!==initial.logo && !localLogo(value.logo)) {error.value=message('Enter the path to a local logo file under /assets/.');return}
   emit('apply',{value,group:dest.value,position:pos.value})
 }
 </script>
 <template><form @submit.prevent="submit">
   <div class="sheet-body">
     <template v-if="!move">
-      <label>Name<input v-model="form.name" required maxlength="160" autofocus :placeholder="groupMode?'Name der Kategorie':'Name des Dienstes'"></label>
+      <label>Name<input v-model="form.name" required maxlength="160" autofocus :placeholder="groupMode?t('Category name'):t('Service name')"></label>
       <fieldset v-if="groupMode" class="category-icons">
-        <legend class="field-caption">Kategoriesymbol</legend>
+        <legend class="field-caption">{{t('Category icon')}}</legend>
         <div class="icon-options">
           <label v-for="[key,label] in categoryIcons" :key="key" class="icon-option">
             <input type="radio" name="category-icon" :value="key" :checked="selectedIcon===key" @click="chooseIcon(key)" @change="chooseIcon(key)">
-            <span><Glyph :name="key" :size="19"/>{{label}}</span>
+            <span><Glyph :name="key" :size="19"/>{{t(label)}}</span>
           </label>
         </div>
-        <p v-if="localLogo(form.logo)" class="hint">Ein Symbol aus der Auswahl ersetzt das lokale Logo.</p>
+        <p v-if="localLogo(form.logo)" class="hint">{{t('Choosing an icon replaces the local logo.')}}</p>
       </fieldset>
       <template v-if="!groupMode">
-        <label>Adresse<input v-model="form.url" maxlength="2048" required inputmode="url" placeholder="https:// oder /lokaler-pfad" autocapitalize="none" spellcheck="false"></label>
-        <label>Beschreibung<input v-model="form.subtitle" maxlength="400"></label>
-        <div class="field-row"><label>Überwachung<select v-model="form.kind" @change="changeKind"><option value="link">Nur Verknüpfung</option><option value="http">HTTP-Erreichbarkeit</option><option value="pihole">Pi-hole</option><option value="nas">NAS</option><option value="service">Dienstmetriken</option><option value="youtube">YouTube-Kanäle</option></select></label>
-          <label v-if="needsSource || form.kind==='http'">Messquelle<select v-model="form.source" :required="needsSource"><option value="" :disabled="needsSource">{{needsSource?'Quelle auswählen':'Adresse des Dienstes'}}</option><option v-if="form.source && !sourceOptions.some(x=>x.id===form.source)" :value="form.source">{{form.source}} (derzeit nicht verfügbar)</option><option v-for="s in sourceOptions" :key="s.id" :value="s.id">{{s.label}}</option></select></label>
+        <label>{{t('Address')}}<input v-model="form.url" maxlength="2048" required inputmode="url" :placeholder="t('https:// or /local-path')" autocapitalize="none" spellcheck="false"></label>
+        <label>{{t('Description')}}<input v-model="form.subtitle" maxlength="400"></label>
+        <div class="field-row"><label>{{t('Monitoring')}}<select v-model="form.kind" @change="changeKind"><option value="link">{{t('Link only')}}</option><option value="http">{{t('HTTP availability')}}</option><option value="pihole">Pi-hole</option><option value="nas">NAS</option><option value="service">{{t('Service metrics')}}</option><option value="youtube">{{t('YouTube channels')}}</option></select></label>
+          <label v-if="needsSource || form.kind==='http'">{{t('Data source')}}<select v-model="form.source" :required="needsSource"><option value="" :disabled="needsSource">{{needsSource?t('Select a source'):t('Service address')}}</option><option v-if="form.source && !sourceOptions.some(x=>x.id===form.source)" :value="form.source">{{t('{source} (currently unavailable)',{source:form.source})}}</option><option v-for="s in sourceOptions" :key="s.id" :value="s.id">{{s.label}}</option></select></label>
         </div>
         <div v-if="form.kind==='link'" class="link-check-field">
           <label>
             <input v-model="form.check_link" type="checkbox" :disabled="!linkCheckAvailable && !form.check_link" aria-describedby="link-check-hint">
-            Erreichbarkeit prüfen
+            {{t('Check availability')}}
           </label>
-          <p id="link-check-hint" class="hint">Für öffentliche HTTP(S)-Adressen und interne Ziele, die für Prüfungen freigegeben sind.</p>
+          <p id="link-check-hint" class="hint">{{t('For public HTTP(S) addresses and internal destinations approved for availability checks.')}}</p>
         </div>
-        <p v-if="needsSource && !sourceOptions.length" class="hint">Für diesen Typ ist aktuell keine Messquelle verfügbar.</p>
+        <p v-if="needsSource && !sourceOptions.length" class="hint">{{t('No data source is currently available for this type.')}}</p>
         <fieldset v-if="form.kind==='youtube'" class="channel-fields">
-          <legend class="field-caption">YouTube-Kanäle</legend>
+          <legend class="field-caption">{{t('YouTube channels')}}</legend>
           <ul v-if="channels.length" class="channel-list">
             <li v-for="channel in channels" :key="channel.id">
               <div class="channel-identity">
                 <strong dir="auto">{{channel.name}}</strong>
                 <small dir="ltr">{{channel.id}}</small>
               </div>
-              <button type="button" class="icon-button" :aria-label="channel.name+' entfernen'" title="Kanal entfernen" :disabled="resolving" @click="removeChannel(channel)"><Glyph name="x" :size="16"/></button>
+              <button type="button" class="icon-button" :aria-label="t('Remove {name}',{name:channel.name})" :title="t('Remove channel')" :disabled="resolving" @click="removeChannel(channel)"><Glyph name="x" :size="16"/></button>
             </li>
           </ul>
-          <p v-else class="hint">Füge einen öffentlichen Kanal hinzu, um neue Videos auf der Kachel zu sehen.</p>
+          <p v-else class="hint">{{t('Add a public channel to see new videos on this tile.')}}</p>
           <div class="channel-add">
-            <label for="youtube-channel">Kanal hinzufügen</label>
-            <input id="youtube-channel" v-model="channelInput" maxlength="2048" placeholder="@Handle, Kanal-ID oder URL" autocapitalize="none" autocomplete="off" spellcheck="false" :readonly="resolving" :disabled="channelLimitReached" :aria-invalid="channelError ? 'true' : undefined" :aria-describedby="channelError ? 'channel-error' : undefined" @input="channelError=''" @keydown.enter.prevent="!$event.isComposing && addChannel()">
-            <button type="button" class="button" :disabled="resolving || !channelInput.trim() || channelLimitReached" @click="addChannel">Hinzufügen</button>
+            <label for="youtube-channel">{{t('Add channel')}}</label>
+            <input id="youtube-channel" v-model="channelInput" maxlength="2048" :placeholder="t('@handle, channel ID or URL')" autocapitalize="none" autocomplete="off" spellcheck="false" :readonly="resolving" :disabled="channelLimitReached" :aria-invalid="channelError ? 'true' : undefined" :aria-describedby="channelError ? 'channel-error' : undefined" @input="channelError=''" @keydown.enter.prevent="!$event.isComposing && addChannel()">
+            <button type="button" class="button" :disabled="resolving || !channelInput.trim() || channelLimitReached" @click="addChannel">{{t('Add')}}</button>
           </div>
-          <p v-if="channelLimitReached" class="hint">Maximal {{youtubeChannelLimit}} Kanäle pro Kachel.</p>
-          <p role="status" :class="{'sr-only':!resolving}" class="hint">{{resolving?'Kanal wird gesucht …':channelMessage}}</p>
-          <p v-if="channelError" id="channel-error" role="alert" class="error">{{channelError}}</p>
+          <p v-if="channelLimitReached" class="hint">{{t('Up to {count} channels per tile.',{count:youtubeChannelLimit})}}</p>
+          <p role="status" :class="{'sr-only':!resolving}" class="hint">{{resolving?t('Looking up channel …'):channelMessage && channelMessage()}}</p>
+          <p v-if="channelError" id="channel-error" role="alert" class="error">{{channelError()}}</p>
         </fieldset>
       </template>
-      <details class="advanced"><summary>Weitere Optionen</summary><div class="more-fields">
-        <label>Lokales Logo<input v-model="form.logo" maxlength="2048" placeholder="/assets/…" spellcheck="false"></label>
-        <label>{{groupMode?'Symbolkennung':'Symbol'}}<input v-model="form.icon" maxlength="120" placeholder="z. B. server, shield oder folder"></label>
-        <template v-if="!groupMode"><label>Schlagwort<input v-model="form.tag" maxlength="80"></label>
-        <label>Link öffnen<select v-model="form.target"><option value="_blank">In neuem Tab</option><option value="_self">In diesem Tab</option></select></label></template>
+      <details class="advanced"><summary>{{t('More options')}}</summary><div class="more-fields">
+        <label>{{t('Local logo')}}<input v-model="form.logo" maxlength="2048" placeholder="/assets/…" spellcheck="false"></label>
+        <label>{{groupMode?t('Icon identifier'):t('Icon')}}<input v-model="form.icon" maxlength="120" :placeholder="t('e.g. server, shield or folder')"></label>
+        <template v-if="!groupMode"><label>{{t('Tag')}}<input v-model="form.tag" maxlength="80"></label>
+        <label>{{t('Open link')}}<select v-model="form.target"><option value="_blank">{{t('In a new tab')}}</option><option value="_self">{{t('In this tab')}}</option></select></label></template>
       </div></details>
     </template>
-    <label v-if="!groupMode">Kategorie<select v-model="dest"><option v-for="g in doc.groups" :key="g.id" :value="g.id">{{g.name}}</option></select></label>
-    <label>Position<select v-model.number="pos"><option v-for="(entry,i) in slots" :key="entry.id" :value="i">{{i+1}} · Vor {{entry.name}}</option><option :value="slots.length">{{slots.length+1}} · Am Ende</option></select></label>
-    <div v-if="!move" class="preview"><span class="field-caption">Vorschau</span><div v-if="groupMode" class="preview-group"><Logo :entry="form" group/><strong>{{form.name||'Neue Kategorie'}}</strong></div><ServiceCard v-else :item="form" :status="previewStatus" :now="now" inert/></div>
-    <p v-if="error" role="alert" class="error">{{error}}</p>
+    <label v-if="!groupMode">{{t('Category')}}<select v-model="dest"><option v-for="g in doc.groups" :key="g.id" :value="g.id">{{g.name}}</option></select></label>
+    <label>Position<select v-model.number="pos"><option v-for="(entry,i) in slots" :key="entry.id" :value="i">{{i+1}} · {{t('Before {name}',{name:entry.name})}}</option><option :value="slots.length">{{slots.length+1}} · {{t('At the end')}}</option></select></label>
+    <div v-if="!move" class="preview"><span class="field-caption">{{t('Preview')}}</span><div v-if="groupMode" class="preview-group"><Logo :entry="form" group/><strong>{{form.name||t('New category')}}</strong></div><ServiceCard v-else :item="form" :status="previewStatus" :now="now" inert/></div>
+    <p v-if="error" role="alert" class="error">{{error()}}</p>
   </div>
-  <div class="sheet-footer"><button v-if="exists && !move" type="button" class="icon-button danger" :aria-label="groupMode?'Kategorie löschen':'Dienst löschen'" title="Löschen" @click="emit('remove')"><Glyph name="trash"/></button>
-    <span class="spacer"></span><button type="button" class="button" @click="emit('close')">Abbrechen</button><button class="button primary" :disabled="resolving">{{move?'Verschieben':'Übernehmen'}}</button></div>
+  <div class="sheet-footer"><button v-if="exists && !move" type="button" class="icon-button danger" :aria-label="groupMode?t('Delete category'):t('Delete service')" :title="t('Delete')" @click="emit('remove')"><Glyph name="trash"/></button>
+    <span class="spacer"></span><button type="button" class="button" @click="emit('close')">{{t('Cancel')}}</button><button class="button primary" :disabled="resolving">{{move?t('Move'):t('Apply')}}</button></div>
 </form></template>

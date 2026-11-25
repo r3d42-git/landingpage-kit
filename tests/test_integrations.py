@@ -11,6 +11,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 import integrations
+from localization import render_reading
 from tools import collect_checkmk, collect_ssh_storage
 
 
@@ -294,6 +295,9 @@ class IntegrationTests(unittest.TestCase):
             {"label": "Kapazität", "value": "2,05 TB"},
             {"label": "Auslastung", "value": "25,0 %"},
         ])
+        english = render_reading(probe, "en")
+        self.assertEqual(english["metrics"][0], {"key": "used", "label": "Used", "value": "0.51 TB"})
+        self.assertEqual(english["metrics"][-1], {"key": "usage", "label": "Usage", "value": "25.0%"})
 
     def test_ssh_storage_warns_at_85_percent(self):
         config = self.ssh_storage_config()

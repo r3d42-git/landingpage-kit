@@ -9,8 +9,13 @@ from tempfile import NamedTemporaryFile
 import time
 
 
-def gibibytes(bytes_count):
-    return f"{bytes_count / 1024**3:.1f}".replace(".", ",") + " GiB"
+def metric(key, label, label_en, amount, unit):
+    value = f"{amount:.1f}"
+    english_unit = "%" if unit == "%" else f" {unit}"
+    return {
+        "key": key, "label": label, "label_en": label_en,
+        "value": f"{value.replace('.', ',')} {unit}", "value_en": value + english_unit,
+    }
 
 
 def snapshot(path):
@@ -21,18 +26,24 @@ def snapshot(path):
         "state": "warning" if progress >= 85 else "ok",
         "progress": progress,
         "metrics": [
-            {"label": "Belegt", "value": gibibytes(used)},
-            {"label": "Frei", "value": gibibytes(free)},
-            {"label": "Kapazität", "value": gibibytes(total)},
-            {"label": "Auslastung", "value": f"{progress:.1f}".replace(".", ",") + " %"},
+            metric("used", "Belegt", "Used", used / 1024**3, "GiB"),
+            metric("free", "Frei", "Free", free / 1024**3, "GiB"),
+            metric("capacity", "Kapazität", "Capacity", total / 1024**3, "GiB"),
+            metric("usage", "Auslastung", "Usage", progress, "%"),
         ],
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("output", type=Path, help="Ausgabedatei im Messverzeichnis")
-    parser.add_argument("--path", type=Path, default=Path("/"), help="Pfad auf dem zu messenden Dateisystem")
+    language = os.environ.get("DASHBOARD_LANGUAGE", "de").strip().lower().replace("_", "-")
+    english = language.split("-")[0] == "en"
+    parser = argparse.ArgumentParser(description=(
+        "Write actual filesystem usage to a snapshot." if english else __doc__
+    ))
+    parser.add_argument("output", type=Path, help="output file in the metrics directory" if english else "Ausgabedatei im Messverzeichnis")
+    parser.add_argument("--path", type=Path, default=Path("/"), help=(
+        "path on the filesystem to measure" if english else "Pfad auf dem zu messenden Dateisystem"
+    ))
     args = parser.parse_args()
     data = snapshot(args.path)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=args.output.parent, delete=False) as file:

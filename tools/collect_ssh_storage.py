@@ -14,6 +14,8 @@ if __package__:
 else:
     from collect_checkmk import measurement, snapshot_filename, write_snapshot
 
+from localization import Text, number, phrase
+
 
 SSH_TIMEOUT = 5
 
@@ -77,23 +79,26 @@ def storage_snapshot(config_path):
         config = json.loads(config_path.read_text(encoding="utf-8"))
         command = ssh_command(config)
     except (OSError, ValueError, KeyError):
-        return measurement("unknown", time.time(), detail="Speicherkonfiguration ungültig")
+        return measurement("unknown", time.time(), detail=Text("Speicherkonfiguration ungültig", "Invalid storage configuration"))
     try:
         output = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                 check=True, timeout=SSH_TIMEOUT).stdout
     except (OSError, subprocess.SubprocessError):
-        return measurement("unknown", time.time(), detail="Speichermessung über SSH nicht verfügbar")
+        return measurement("unknown", time.time(), detail=Text("Speichermessung über SSH nicht verfügbar", "Storage measurement over SSH unavailable"))
     try:
         total, used, available = disk_usage(output.decode("ascii"), config["mountpoint"])
     except ValueError:
-        return measurement("unknown", time.time(), detail="Speichermessung lieferte ungültige Daten")
+        return measurement("unknown", time.time(), detail=Text("Speichermessung lieferte ungültige Daten", "Storage measurement returned invalid data"))
     percent = used * 100 / total
-    metrics = tuple((label, f"{blocks * 1024 / 10**12:.2f} TB".replace(".", ","))
-                    for label, blocks in (("Belegt", used), ("Frei", available), ("Kapazität", total)))
-    metrics += (("Auslastung", f"{percent:.1f} %".replace(".", ",")),)
+    metrics = tuple((label, phrase("{} TB", "{} TB", number(blocks * 1024 / 10**12, 2, grouping=False)))
+                    for label, blocks in ((Text("Belegt", "Used", key="used"), used),
+                                          (Text("Frei", "Free", key="free"), available),
+                                          (Text("Kapazität", "Capacity", key="capacity"), total)))
+    metrics += ((Text("Auslastung", "Usage", key="usage"), phrase("{} %", "{}%", number(percent, 1))),)
     warning = used * 100 >= total * 85
     return measurement("warning" if warning else "ok", time.time(), metrics,
-                       detail="Auslastung bei mindestens 85 %" if warning else None, progress=round(percent, 1))
+                       detail=Text("Auslastung bei mindestens 85 %", "Usage is at least 85%") if warning else None,
+                       progress=round(percent, 1))
 
 
 def main():

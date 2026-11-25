@@ -269,3 +269,10 @@ summary{font-size:.81rem;font-weight:600;cursor:pointer;color:var(--accent)}
   .card-top { min-height: 3rem; padding-block: .35rem .22rem; }
   .page-footer { margin-top: .45rem; padding-top: .2rem; }
 }
+
+.language-picker{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:.3rem;min-height:2.35rem;padding:.3rem .45rem;border:1px solid transparent;border-radius:.65rem;font-size:.8rem;font-weight:600;color:var(--ink);flex:none}
+.language-picker select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.language-picker:hover{background:var(--subtle);border-color:var(--line)}
+.language-picker:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.sheet-heading h2{flex:1;min-width:0;overflow-wrap:anywhere}
+@media(pointer:coarse){.language-picker{min-height:2.75rem}}

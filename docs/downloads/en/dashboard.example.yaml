@@ -1,0 +1,30 @@
+# Copy this file to dashboard.yaml and edit the names, addresses and order.
+# Keep IDs stable across edits so the dashboard can recognize existing tiles.
+settings:
+  title: My dashboard
+  subtitle: Links and services in one place
+
+groups:
+  - id: getting-started
+    name: Getting started
+    icon: home
+    items:
+      - id: handbook
+        name: Landingpage Kit handbook
+        kind: link
+        url: https://r3d42-git.github.io/landingpage-kit/en/
+        subtitle: Installation and configuration examples
+        tag: Documentation
+      - id: example-website
+        name: Example website
+        kind: link
+        url: https://example.org/
+        subtitle: Replace this address with a link of your own.
+        target: _blank
+        # check_link: true  # Periodically check a publicly accessible website.
+
+  - id: my-services
+    name: My services
+    icon: server
+    # Tiles appear in list order. An empty list is valid.
+    items: []

@@ -16,8 +16,10 @@ jobs:
         include:
           - runner: ubuntu-24.04
             arch: amd64
+            language: en
           - runner: ubuntu-24.04-arm
             arch: arm64
+            language: de
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -33,6 +35,7 @@ jobs:
       - name: Neuinstallation und Wiederherstellung mit Compose prüfen
         env:
           DASHBOARD_IMAGE: landingpage-kit:test
+          DASHBOARD_LANGUAGE: ${{ matrix.language }}
           COMPOSE_PROJECT_NAME: installationstest
         run: bash .github/workflows/check-install.sh
       - name: Release-Image mit festem Versionsnamen exportieren
@@ -99,8 +102,9 @@ jobs:
           kit="landingpage-kit-$version"
           mkdir -p "$RUNNER_TEMP/$kit"
           git archive HEAD | tar -x -C "$RUNNER_TEMP/$kit"
-          mkdir -p "$RUNNER_TEMP/$kit/docs/downloads"
+          mkdir -p "$RUNNER_TEMP/$kit/docs/downloads/en"
           cp examples/*.yaml compose.yaml "$RUNNER_TEMP/$kit/docs/downloads/"
+          cp examples/en/*.yaml "$RUNNER_TEMP/$kit/docs/downloads/en/"
           (cd "$RUNNER_TEMP" && zip -q -r "$GITHUB_WORKSPACE/release-files/$kit.zip" "$kit")
           cd release-files
           sha256sum *.tar.gz *.zip > SHA256SUMS

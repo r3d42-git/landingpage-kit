@@ -1,10 +1,14 @@
 # Landingpage Kit
 
+**Deutsch** · [English](README.en.md)
+
 Baue dir eine Startseite für deine Dienste, Links und Messwerte. Sortiere Kacheln in Kategorien, ändere sie direkt im Browser oder beschreibe das Dashboard in einer YAML-Datei. Die Anwendung läuft auf deinem Rechner, Server oder NAS mit Docker Compose. Inhalte und Einstellungen liegen lokal in SQLite und im Docker-Volume.
 
-**[Zum deutschen Handbuch](https://r3d42-git.github.io/landingpage-kit/)** · **[Installationspaket herunterladen](https://github.com/r3d42-git/landingpage-kit/releases/download/v1.0.0/landingpage-kit-1.0.0.zip)** · **[Installationsprompt kopieren](https://r3d42-git.github.io/landingpage-kit/#agent)**
+**[Zum deutschen Handbuch](https://r3d42-git.github.io/landingpage-kit/)** · **[Installationspaket herunterladen](https://github.com/r3d42-git/landingpage-kit/releases/download/v1.1.0/landingpage-kit-1.1.0.zip)** · **[Installationsprompt kopieren](https://r3d42-git.github.io/landingpage-kit/#agent)**
 
 ![Startseite mit neutralen Beispielkacheln](docs/abbildungen/startseite.png)
+
+Die Oberfläche ist auf Deutsch und Englisch verfügbar. Die Startseite richtet sich zunächst nach der Browsersprache. Über die Sprachauswahl kannst du die Einstellung auf diesem Gerät ändern.
 
 ## Ausprobieren
 
@@ -33,7 +37,7 @@ Das Beispiel verwendet neutrale Inhalte. Für den Anfang reichen Links. Du kanns
 
 ## Image und Quellcode
 
-Compose lädt `ghcr.io/r3d42-git/landingpage-kit:1.0.0`. Das veröffentlichte Image unterstützt Linux auf AMD64 und ARM64. Im [Release](https://github.com/r3d42-git/landingpage-kit/releases/tag/v1.0.0) stehen beide Architekturen auch als Dateien für `docker load` mit SHA-256-Prüfsummen bereit. Der Quellcode für genau diese Version ist über den Tag `v1.0.0` verfügbar.
+Compose lädt `ghcr.io/r3d42-git/landingpage-kit:1.1.0`. Das veröffentlichte Image unterstützt Linux auf AMD64 und ARM64. Im [Release](https://github.com/r3d42-git/landingpage-kit/releases/tag/v1.1.0) stehen beide Architekturen auch als Dateien für `docker load` mit SHA-256-Prüfsummen bereit. Der Quellcode für genau diese Version ist über den Tag `v1.1.0` verfügbar.
 
 Mit **Use this template** auf GitHub kannst du ein eigenes Repository anlegen. Um den Container aus den Quellen zu bauen, nutze `docker compose -f compose.yaml -f deploy/compose.build.yaml build` und gib dieselben beiden Dateien bei der Einrichtung und beim Start an. Bewahre eigene Konfiguration, Passwörter und Sicherungen außerhalb öffentlicher Repositories auf.
 
@@ -41,7 +45,7 @@ Mit **Use this template** auf GitHub kannst du ein eigenes Repository anlegen. U
 
 Öffne in deinem GitHub-Repository **Settings → Pages**. Wähle **Deploy from a branch**, den Branch `main` und den Ordner `/docs`. Speichere die Auswahl. GitHub zeigt dort nach der Veröffentlichung die Adresse deines Handbuchs an. Für den Offlinezugriff kannst du `docs/index.html` direkt aus dem entpackten Installationspaket öffnen.
 
-Wenn du die Beispiele in deiner Vorlage änderst, aktualisiere die Downloadkopien mit `cp examples/*.yaml compose.yaml docs/downloads/`. Der Handbuch-Check vergleicht die Kopien bei jedem betroffenen Pull Request. Für eine eigene öffentliche Distribution passe auch die Repository-, Release- und Registry-Adressen an.
+Wenn du die Beispiele in deiner Vorlage änderst, aktualisiere die Downloadkopien mit `cp examples/*.yaml compose.yaml docs/downloads/`. Für die englischen Vorlagen verwende zusätzlich `cp examples/en/*.yaml docs/downloads/en/`. Der Handbuch-Check vergleicht die Kopien bei jedem betroffenen Pull Request. Für eine eigene öffentliche Distribution passe auch die Repository-, Release- und Registry-Adressen an.
 
 ## Lizenz
 

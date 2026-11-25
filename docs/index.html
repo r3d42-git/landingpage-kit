@@ -5,12 +5,13 @@
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Deine eigene Landingpage mit Docker Compose installieren, Dienstkacheln anlegen, Messwerte anbinden und Daten sichern.">
 <title>Landingpage · Handbuch</title>
+<link rel="alternate" hreflang="en" href="./en/index.html">
 <link rel="stylesheet" href="handbuch.css"><script defer src="handbuch.js"></script>
 </head>
 <body>
 <a class="skip" href="#inhalt">Zum Inhalt</a>
-<header><div class="bar"><a class="wordmark" href="#anfang"><i aria-hidden="true"></i> Landingpage</a><nav aria-label="Projekt"><a href="#dateien">Downloads</a><a href="https://github.com/r3d42-git/landingpage-kit">GitHub ↗</a></nav></div></header>
-<main id="inhalt">
+<header><div class="bar"><a class="wordmark" href="#anfang"><i aria-hidden="true"></i> Landingpage</a><div class="bar-links"><nav aria-label="Projekt"><a href="#dateien">Downloads</a><a href="https://github.com/r3d42-git/landingpage-kit">GitHub ↗</a></nav><nav class="languages" aria-label="Sprache des Handbuchs"><span aria-current="page">Deutsch</span><a href="./en/index.html" lang="en" hreflang="en" data-language-link>English</a></nav></div></div></header>
+<main id="inhalt" tabindex="-1">
 <div class="hero" id="anfang">
 <div class="herotext"><p class="eyebrow">Handbuch für den Eigenbetrieb</p>
 <h1>Deine eigene<br>Landingpage.</h1>
@@ -27,10 +28,11 @@
 <section id="installation"><h2>Installation</h2>
 <p>Du brauchst einen Host mit laufendem Docker und dem Compose-Plug-in. Die Standardinstallation bindet beide Ports an Loopback. Sie lässt sich direkt auf dem Host nutzen. Für den Zugang von anderen Geräten findest du weiter unten die LAN-Einstellungen. Docker Desktop enthält Compose bereits. Für Linux-Server stehen Engine und Compose-Plug-in separat bereit. <a href="https://docs.docker.com/engine/install/">Docker Engine installieren</a> · <a href="https://docs.docker.com/compose/install/">Docker Compose installieren</a></p>
 <p>Die Befehle verwenden eine Unix-Shell. Auf Windows kannst du sie in WSL mit Docker-Anbindung ausführen.</p><h3>1. Dateien vorbereiten</h3>
-<p>Lade das <a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.0.0/landingpage-kit-1.0.0.zip">Installationspaket für Version 1.0.0</a> herunter. Entpacke es in einen neuen Ordner und öffne dort ein Terminal. Alle folgenden Compose-Befehle laufen im Ordner mit <code>compose.yaml</code>.</p>
+<p>Lade das <a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.1.0/landingpage-kit-1.1.0.zip">Installationspaket für Version 1.1.0</a> herunter. Entpacke es in einen neuen Ordner und öffne dort ein Terminal. Alle folgenden Compose-Befehle laufen im Ordner mit <code>compose.yaml</code>.</p>
 <pre><code>docker compose version
 docker info
 cp examples/dashboard.example.yaml dashboard.yaml</code></pre>
+<p>Die Verwaltungsbefehle erscheinen standardmäßig auf Deutsch. Für englische Ausgaben setze <code>DASHBOARD_LANGUAGE=en</code> in der <code>.env</code> neben <code>compose.yaml</code>.</p>
 <p>Die einzelnen YAML-Dateien und das vollständige Paket findest du auch unter <a href="#dateien">Projektdateien</a>. Das Offline-Handbuch im Paket öffnest du über <code>docs/index.html</code>.</p><p>Öffne <code>dashboard.yaml</code> in einem Texteditor. Passe Titel, Kategorien und Links an oder probiere das Beispiel unverändert aus. Behalte die eindeutigen IDs bei, wenn du bestehende Einträge weiterpflegst.</p>
 <h3>2. Startseite und Editor einrichten</h3>
 <pre><code>docker compose pull
@@ -54,14 +56,15 @@ DASHBOARD_HTTPS_PORT=8443</code></pre>
 docker compose up -d --force-recreate</code></pre></details>
 <details><summary>Container-Image offline laden oder lokal bauen</summary><p>Lade aus dem Release das Imagearchiv für die Architektur des Docker-Hosts herunter (<code>amd64</code> für x86-64, <code>arm64</code> für ARM64) und prüfe die SHA-256-Prüfsumme mit dem Eintrag in <code>SHA256SUMS</code>. Übertrage Archiv und Installationspaket zum Zielhost. Lade dort das Image und fahre beim Befehl <code>configure.py init</code> fort.</p>
 <pre><code>docker load -i landingpage-kit-linux-amd64.tar.gz</code></pre>
-<p>Für einen lokalen Build entpacke den <a href="https://github.com/r3d42-git/landingpage-kit/archive/refs/tags/v1.0.0.zip">Quellcode derselben Version</a>. Baue mit beiden Compose-Dateien. Nutze bei den folgenden Compose-Befehlen ebenfalls beide <code>-f</code>-Optionen. Der Build benötigt Zugriff auf die Basisimages und Paketquellen.</p>
+<p>Für einen lokalen Build entpacke den <a href="https://github.com/r3d42-git/landingpage-kit/archive/refs/tags/v1.1.0.zip">Quellcode derselben Version</a> und bereite die Dateien wie in Schritt 1 vor. Verwende in Schritt 2 den folgenden Build-Befehl anstelle von <code>docker compose pull</code>. Gib bei allen weiteren Compose-Befehlen ebenfalls beide <code>-f</code>-Optionen an. Der Build benötigt Zugriff auf die Basisimages und Paketquellen.</p>
 <pre><code>docker compose -f compose.yaml -f deploy/compose.build.yaml build</code></pre></details>
 </section>
 <section id="agent"><h2>Einrichtung mit einem Agenten</h2>
 <p>Kopiere den Auftrag in einen Agenten deiner Wahl, der auf deinem Zielsystem arbeiten darf. Ergänze den gewünschten Installationsort. Ein rein textbasierter Assistent kann dir die Schritte stattdessen zum Ausführen geben.</p>
-<div class="prompt"><div class="promptbar"><strong>Installationsauftrag</strong><button hidden id="copy" type="button">Prompt kopieren</button></div><p id="auftrag">Richte das Projekt https://github.com/r3d42-git/landingpage-kit nach dem zugehörigen Handbuch auf meinem Zielsystem ein. Prüfe Betriebssystem, Docker Compose, freie Ports und vorhandene Dateien. Kläre mit mir den Installationsordner und ob ich ausschließlich auf diesem Rechner oder auch im LAN zugreifen möchte. Verwende die offiziellen Dateien der gewählten Projektversion und die mitgelieferten neutralen Startdaten. Erhalte vorhandene Instanzen, verwende ausschließlich die vereinbarte Bind-Adresse und zeige keine Passwörter oder privaten Schlüssel im Chat. Richte den Dienst ein, prüfe den HTTP-Lesezugriff sowie den HTTPS-Editor und zeige mir die URLs, den Weg zur Passwortverwaltung und die Schritte für Sicherung und Update. Bitte mich bei einer erforderlichen lokalen Eingabe um die konkrete Aktion. Optionale Messquellen richten wir erst ein, wenn ich die gewünschten Ziele angegeben habe.</p><span id="copystatus" role="status"></span></div></section>
+<div class="prompt"><div class="promptbar"><strong>Installationsauftrag</strong><button hidden id="copy" type="button" aria-controls="auftrag">Prompt kopieren</button></div><p id="auftrag">Richte das Projekt https://github.com/r3d42-git/landingpage-kit nach dem zugehörigen Handbuch auf meinem Zielsystem ein. Prüfe Betriebssystem, Docker Compose, freie Ports und vorhandene Dateien. Kläre mit mir den Installationsordner und ob ich ausschließlich auf diesem Rechner oder auch im LAN zugreifen möchte. Verwende die offiziellen Dateien der gewählten Projektversion und die mitgelieferten neutralen Startdaten. Erhalte vorhandene Instanzen, verwende ausschließlich die vereinbarte Bind-Adresse und zeige keine Passwörter oder privaten Schlüssel im Chat. Richte den Dienst ein, prüfe den HTTP-Lesezugriff sowie den HTTPS-Editor und zeige mir die URLs, den Weg zur Passwortverwaltung und die Schritte für Sicherung und Update. Bitte mich bei einer erforderlichen lokalen Eingabe um die konkrete Aktion. Optionale Messquellen richten wir erst ein, wenn ich die gewünschten Ziele angegeben habe.</p><span id="copystatus" role="status" data-copied="Installationsauftrag kopiert." data-selected="Der Auftrag ist markiert. Kopiere ihn über das Kontextmenü oder die Tastatur."></span></div></section>
 <section id="editor"><h2>Erste Schritte im Editor</h2>
 <p>Mit der mitgelieferten Startdatei erscheint „Meine Startseite“. Unter <b>Einstieg</b> findest du das Handbuch und die „Beispielseite“. <b>Eigene Dienste</b> ist als leere Kategorie für deine ersten Einträge vorbereitet. Du kannst dort direkt eine Kachel anlegen oder eine zusätzliche Kategorie erstellen.</p>
+<p>Beim ersten Besuch übernimmt die Oberfläche eine unterstützte Sprache aus den Browsereinstellungen. Falls dort weder Deutsch noch Englisch aktiv ist, erscheint sie auf Deutsch. Über <b>DE</b> oder <b>EN</b> neben dem Globussymbol wechselst du die Sprache. Der Browser merkt sich deine Auswahl. Die Inhalte aus der Startdatei und deine eigenen Einträge behalten ihre Sprache.</p>
 <figure class="board-shot"><a href="abbildungen/startseite.png" aria-label="Beispielstartseite in Originalgröße öffnen"><img loading="lazy" alt="Ausgebaute Beispielstartseite mit drei Kategorien und neun Linkkacheln" width="1440" height="560" src="abbildungen/startseite.png"></a><figcaption>Eine ausgebaute Beispielstartseite mit eigenen Kategorien und neun Links. Zum Vergrößern das Bild öffnen.</figcaption></figure>
 <ol><li>Öffne die Startseite und wähle <b>Bearbeiten</b>. Der Browser öffnet die HTTPS-Anmeldung. Gib dein zuvor gewähltes Editorpasswort ein.</li>
 <li>Wähle am Ende der Seite <b>Kategorie hinzufügen</b>. Trage etwa „Werkzeuge“ ein, wähle ein <b>Kategoriesymbol</b> und bestätige mit <b>Übernehmen</b>.</li>
@@ -117,6 +120,7 @@ docker compose -f compose.yaml -f deploy/compose.metrics.yaml up -d</code></pre>
 <details><summary>Beispiel für einen minütlichen Cronjob</summary><p>Ermittle die Pfade mit <code>command -v python3</code> und <code>pwd</code> im Installationsordner. Öffne mit <code>crontab -e</code> die vorhandene Tabelle des Benutzers, der in das Messverzeichnis schreiben darf. Ergänze eine Zeile und ersetze die Beispielpfade durch deine eigenen. Prüfe nach zwei Minuten den Zeitstempel von <code>disk-usage.json</code>.</p>
 <pre><code>* * * * * /usr/bin/python3 /opt/landingpage-kit/examples/write-disk-snapshot.py /opt/landingpage-kit/instance/metrics/disk-usage.json --path /</code></pre></details>
 <p>Andere Sammler können dasselbe Format schreiben. <code>observed_at</code> ist die Messzeit in Unix-Sekunden, <code>state</code> einer der Werte <code>ok</code>, <code>warning</code>, <code>down</code>, <code>unknown</code> oder <code>stale</code>. <code>metrics</code> enthält Paare aus <code>label</code> und <code>value</code>. <code>progress</code> ist optional und liegt zwischen 0 und 100. Schreibe zunächst eine temporäre Datei und ersetze die Zieldatei anschließend atomar.</p>
+<p>Für eigene zweisprachige Messwerte kannst du im selben Eintrag <code>label_en</code> und bei Textwerten <code>value_en</code> mitgeben. Beispielsweise zeigt <code>{"label":"Belegt","label_en":"Used","value":"2,5 GiB","value_en":"2.5 GiB"}</code> die zum gewählten Interface passende Fassung. Eigene Bezeichnungen ohne Übersetzung erscheinen in beiden Sprachen wie eingegeben.</p>
 <h3>Beispiel C · Pi-hole und Prometheus verbinden</h3>
 <p>Übernimm die Einträge deiner vorhandenen Quellenliste oder beginne eine neue <code>integrations.yaml</code> mit dem Beispiel. Ersetze die Namen und Ports durch die aus deinem Netzwerk. Die HTTPS-Verbindung setzt ein für den Container vertrauenswürdiges Zertifikat voraus.</p>
 <pre><code>allowed_endpoints:
@@ -133,7 +137,7 @@ sources:
     kind: prometheus
     display_kind: service
     url: http://prometheus.home.arpa:9090</code></pre>
-<p>Pi-hole v6 liefert die Zusammenfassung unter <code>/api/stats/summary</code>. Der direkte Adapter liest einen bereits autorisiert erreichbaren Statistikpfad ohne Login oder Sitzung. Prüfe, ob dein Monitoring-Zugang den Pfad auf diese Weise lesen darf. Bei geschützter API behältst du die Authentifizierung bei. Lass stattdessen einen eigenen Sammler auf dem Host mit seinen dort verwahrten Zugangsdaten abfragen und einen Snapshot wie in Beispiel B schreiben. Für die Pi-hole-Ansicht setze dessen <code>display_kind</code> auf <code>pihole</code> und verwende die Messfeldnamen <code>Anfragen (24 h)</code> und <code>Blockiert</code>. <a href="https://docs.pi-hole.net/api/">Pi-hole-API und lokale Dokumentation</a></p>
+<p>Pi-hole v6 liefert die Zusammenfassung unter <code>/api/stats/summary</code>. Der direkte Adapter liest einen bereits autorisiert erreichbaren Statistikpfad ohne Login oder Sitzung. Prüfe, ob dein Monitoring-Zugang den Pfad auf diese Weise lesen darf. Bei geschützter API kann ein eigener Sammler auf dem Host mit seinen dort verwahrten Zugangsdaten abfragen und einen Snapshot wie in Beispiel B schreiben. Setze für die Pi-hole-Ansicht <code>display_kind</code> auf <code>pihole</code>. Gib den Messfeldern für Anfragen und blockierte Anfragen jeweils <code>key</code>, <code>label</code> und <code>label_en</code>. Verwende die Schlüssel <code>queries</code> und <code>blocked</code>, damit beide in der Hauptansicht der Kachel erscheinen. <a href="https://docs.pi-hole.net/api/">Pi-hole-API und lokale Dokumentation</a></p>
 <pre><code>docker compose run --rm --no-deps -T landingpage python tools/configure.py check-sources &lt; integrations.yaml
 docker compose run --rm --no-deps -T landingpage python tools/configure.py sources &lt; integrations.yaml
 docker compose exec -T landingpage python manage.py sources</code></pre>
@@ -193,9 +197,9 @@ docker compose exec -T landingpage python tools/configure.py apply --revision N 
 <li><a href="./downloads/dashboard-monitoring.example.yaml" download>Alternative Startseite mit HTTP- und Speicherkachel (YAML)</a></li>
 <li><a href="./downloads/integrations.example.yaml" download>Beispiel für Messquellen (YAML)</a></li>
 <li><a href="./downloads/compose.yaml" download>Docker Compose (YAML)</a></li>
-<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.0.0/landingpage-kit-1.0.0.zip">Installationspaket 1.0.0 (ZIP)</a></li>
-<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/tag/v1.0.0">Release mit Imagearchiven und SHA-256-Prüfsummen</a></li>
-<li><a href="https://github.com/r3d42-git/landingpage-kit/tree/v1.0.0">Quellcode der Version 1.0.0</a> · <a href="https://github.com/r3d42-git/landingpage-kit/blob/v1.0.0/LICENSE">Lizenz GPLv3</a></li></ul>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.1.0/landingpage-kit-1.1.0.zip">Installationspaket 1.1.0 (ZIP)</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/tag/v1.1.0">Release mit Imagearchiven und SHA-256-Prüfsummen</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/tree/v1.1.0">Quellcode der Version 1.1.0</a> · <a href="https://github.com/r3d42-git/landingpage-kit/blob/v1.1.0/LICENSE">Lizenz GPLv3</a></li></ul>
 </section>
 </div></div></main>
 <footer><span>Landingpage · Handbuch</span><a href="#anfang">Zum Anfang ↑</a></footer>

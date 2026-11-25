@@ -18,3 +18,6 @@ jobs:
           for original in compose.yaml examples/*.yaml; do
             cmp "$original" "docs/downloads/${original##*/}"
           done
+          for original in examples/en/*.yaml; do
+            cmp "$original" "docs/downloads/en/${original##*/}"
+          done

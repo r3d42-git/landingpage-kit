@@ -20,6 +20,7 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 import integrations
+from localization import Text
 from server import DashboardServer, Sessions, StatusPoller, Store, clean_status, fingerprint, tls_context
 
 
@@ -157,6 +158,37 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(result[0], 200)
         self.assertIn("Max-Age=0", result[1]["Set-Cookie"])
         self.assertFalse(self.send("GET", "/api/dashboard", cookie=cookie)[2]["authenticated"])
+
+    def test_http_language_is_selected_for_each_request(self):
+        english = {"Accept-Language": "fr, en-GB;q=0.9, de;q=0.8"}
+        german = {"Accept-Language": "en;q=0, de-AT;q=0.7"}
+        item = SEED["groups"][0]["items"][0]
+        stamp = int(time.time())
+        reading = {
+            "state": "ok", "label": "Primär", "detail": Text("Dienst antwortet", "Service is responding"),
+            "metrics": [
+                {"label": Text("Anfragen", "Queries", key="queries"), "value": Text("12.345", "12,345")},
+                {"label": "Antwort", "value": "Aktiv"},
+            ],
+        }
+        self.store.write_status(item["id"], fingerprint(item), clean_status(reading, stamp), stamp, 180)
+        code, headers, body = self.send("GET", "/api/status", headers=english)
+        self.assertEqual((code, headers["Content-Language"], headers["Vary"]), (200, "en", "Accept-Language"))
+        status = body["items"][item["id"]]
+        self.assertEqual((status["label"], status["detail"]), ("Primär", "Service is responding"))
+        self.assertEqual(status["metrics"], [
+            {"key": "queries", "label": "Queries", "value": "12,345"},
+            {"label": "Antwort", "value": "Aktiv"},
+        ])
+        _, _, body = self.send("GET", "/api/status", headers=german)
+        self.assertEqual(body["items"][item["id"]]["metrics"][0],
+                         {"key": "queries", "label": "Anfragen", "value": "12.345"})
+        _, _, body = self.send("GET", "/api/dashboard", headers=english)
+        self.assertEqual(body["settings"], SEED["settings"])
+        for header, lang, message in ((english, "en", "Sign-in required."), (german, "de", "Anmeldung erforderlich.")):
+            code, headers, body = self.send("GET", "/api/backup", headers=header)
+            self.assertEqual((code, headers["Content-Language"], body["error"]), (401, lang, message))
+            self.assertEqual(body["error_translations"][lang], message)
 
     def test_public_channels_editor_flow(self):
         channel = {"id": "UC" + "x" * 22, "name": "Testkanal"}

@@ -14,6 +14,8 @@ import unicodedata
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from localization import Text, number, phrase
+
 
 MAX_CHANNELS = 12
 CHANNEL_ID = re.compile(r"UC[A-Za-z0-9_-]{22}")
@@ -32,8 +34,29 @@ _CACHE_TTL = 15 * 60
 _CACHE_SIZE = 128
 _MAX_PENDING = 24
 _PUBLIC_FEED_CAPACITY = 15
-_INVALID_INPUT = "Bitte einen YouTube-Kanallink, eine Kanal-ID oder einen @Handle eingeben."
-_NO_CHANNEL = "Der öffentliche YouTube-Kanal konnte nicht aufgelöst werden."
+_INVALID_INPUT = Text(
+    "Bitte einen YouTube-Kanallink, eine Kanal-ID oder einen @Handle eingeben.",
+    "Enter a YouTube channel URL, channel ID or @handle.",
+)
+_NO_CHANNEL = Text(
+    "Der öffentliche YouTube-Kanal konnte nicht aufgelöst werden.",
+    "The public YouTube channel could not be resolved.",
+)
+_NO_VALID_CHANNELS = Text("Keine gültigen YouTube-Kanäle", "No valid YouTube channels")
+_FEEDS_UNAVAILABLE = Text("YouTube-Feeds nicht verfügbar", "YouTube feeds unavailable")
+_PARTIAL_FEEDS = Text("YouTube-Feeds teilweise verfügbar", "Some YouTube feeds are available")
+_NO_PUBLISHED_VIDEOS = Text("Keine veröffentlichten Videos in den Feeds", "No published videos in the feeds")
+_PUBLIC_FEEDS = Text("Öffentliche YouTube-Feeds", "Public YouTube feeds")
+_INCOMPLETE_FEED_DETAIL = Text(
+    "Die Gesamtzahl und der neueste Upload lassen sich erst mit allen Kanälen bestimmen.",
+    "All channels are needed to determine the total and the latest upload.",
+)
+_CHANNELS_AVAILABLE = Text("Abrufbare Kanäle", "Available channels", key="available_channels")
+_NEW_VIDEOS = Text("Neue Videos (24 h)", "New videos (24 h)", key="new_videos_24h")
+_LATEST_UPLOAD = Text("Neuester Upload", "Latest upload", key="latest_upload")
+_CHANNEL = Text("Kanal", "Channel", key="channel")
+_PUBLISHED = Text("Veröffentlicht", "Published", key="published")
+_UNKNOWN = Text("Unbekannt", "Unknown")
 
 _pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="youtube-feed")
 _handle_slots = BoundedSemaphore(2)
@@ -269,25 +292,61 @@ def _status(state, label, metrics=(), *, feeds=(), detail=None):
     return result
 
 
+def _publication_time(published):
+    return Text(
+        published.strftime("%d.%m.%Y · %H:%M UTC"),
+        published.strftime("%Y-%m-%d · %H:%M UTC"),
+    )
+
+
+def localize_legacy(reading):
+    """Add translations for cached results written before the language switcher."""
+    labels = {
+        label: label for label in (_NO_VALID_CHANNELS, _FEEDS_UNAVAILABLE, _PARTIAL_FEEDS, _NO_PUBLISHED_VIDEOS, _PUBLIC_FEEDS)
+    }
+    if reading["label"] in labels:
+        reading["label"] = labels[reading["label"]]
+    if reading.get("detail") == _INCOMPLETE_FEED_DETAIL:
+        reading["detail"] = _INCOMPLETE_FEED_DETAIL
+    metrics = {label: label for label in (_CHANNELS_AVAILABLE, _NEW_VIDEOS, _LATEST_UPLOAD, _CHANNEL, _PUBLISHED)}
+    for metric in reading["metrics"]:
+        label, value = metric["label"], metric["value"]
+        metric["label"] = metrics.get(label, label)
+        if not isinstance(value, str):
+            continue
+        if label == _PUBLISHED:
+            try:
+                metric["value"] = _publication_time(datetime.strptime(value, "%d.%m.%Y · %H:%M UTC"))
+            except ValueError:
+                pass
+        elif label == _CHANNELS_AVAILABLE and (parts := re.fullmatch(r"([0-9]+) von ([0-9]+)", value)):
+            metric["value"] = phrase("{} von {}", "{} of {}", *parts.groups())
+        elif label == _NEW_VIDEOS:
+            if value == _UNKNOWN:
+                metric["value"] = _UNKNOWN
+            elif parts := re.fullmatch(r"Mindestens ([0-9]+)", value):
+                metric["value"] = phrase("Mindestens {}", "At least {}", parts[1])
+
+
 def probe_channels(channels: list[dict[str, str]]) -> dict:
     """Read each distinct feed and report a combined view of public releases."""
     if not isinstance(channels, list) or not 1 <= len(channels) <= MAX_CHANNELS:
-        return _status("unknown", "Keine gültigen YouTube-Kanäle")
+        return _status("unknown", _NO_VALID_CHANNELS)
     ids = [channel.get("id") if isinstance(channel, dict) else None for channel in channels]
     if any(not isinstance(channel_id, str) or not CHANNEL_ID.fullmatch(channel_id) for channel_id in ids):
-        return _status("unknown", "Keine gültigen YouTube-Kanäle")
+        return _status("unknown", _NO_VALID_CHANNELS)
     deadline = time.monotonic() + _PROBE_TIMEOUT
     unique_ids = list(dict.fromkeys(ids))
     futures = [_feed_future(channel_id, deadline) for channel_id in unique_ids]
     done, _ = wait([future for future in futures if future is not None], timeout=max(0, deadline - time.monotonic()))
     feeds = [feed for future in futures if future in done and (feed := future.result()) is not None]
     if not feeds:
-        return _status("unknown", "YouTube-Feeds nicht verfügbar")
+        return _status("unknown", _FEEDS_UNAVAILABLE)
     if len(feeds) != len(unique_ids):
         return _status(
-            "warning", "YouTube-Feeds teilweise verfügbar",
-            [("Abrufbare Kanäle", f"{len(feeds)} von {len(unique_ids)}")], feeds=feeds,
-            detail="Die Gesamtzahl und der neueste Upload lassen sich erst mit allen Kanälen bestimmen.",
+            "warning", _PARTIAL_FEEDS,
+            [(_CHANNELS_AVAILABLE, phrase("{} von {}", "{} of {}", len(feeds), len(unique_ids)))], feeds=feeds,
+            detail=_INCOMPLETE_FEED_DETAIL,
         )
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=24)
@@ -299,14 +358,14 @@ def probe_channels(channels: list[dict[str, str]]) -> dict:
     )
     count = recent
     if capped:
-        count = f"Mindestens {recent}" if recent else "Unbekannt"
-    metrics = [("Neue Videos (24 h)", count)]
+        count = phrase("Mindestens {}", "At least {}", number(recent)) if recent else _UNKNOWN
+    metrics = [(_NEW_VIDEOS, count)]
     if not candidates:
-        return _status("ok", "Keine veröffentlichten Videos in den Feeds", metrics, feeds=feeds)
+        return _status("ok", _NO_PUBLISHED_VIDEOS, metrics, feeds=feeds)
     latest, channel_name = max(candidates, key=lambda candidate: candidate[0].published)
     metrics.extend([
-        ("Neuester Upload", latest.title),
-        ("Kanal", channel_name),
-        ("Veröffentlicht", latest.published.strftime("%d.%m.%Y · %H:%M UTC")),
+        (_LATEST_UPLOAD, latest.title),
+        (_CHANNEL, channel_name),
+        (_PUBLISHED, _publication_time(latest.published)),
     ])
-    return {**_status("ok", "Öffentliche YouTube-Feeds", metrics, feeds=feeds), "latest_video_id": latest.video_id}
+    return {**_status("ok", _PUBLIC_FEEDS, metrics, feeds=feeds), "latest_video_id": latest.video_id}

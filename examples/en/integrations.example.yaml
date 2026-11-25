@@ -1,0 +1,35 @@
+# List each allowed origin with its scheme, host and port (if needed).
+# The URL a tile opens can differ from the endpoint supplying its metrics.
+allowed_endpoints:
+  - http://127.0.0.1:8080
+  # - http://prometheus.home.arpa:9090
+
+sources:
+  - id: dashboard-health
+    label: Dashboard HTTP status
+    kind: http
+    url: http://127.0.0.1:8080/healthz
+    statuses: [200]
+    expect_json:
+      ok: true
+
+  - id: disk-usage
+    label: Disk usage
+    kind: snapshot
+    display_kind: nas
+    file: disk-usage.json
+    max_age: 180
+
+  # Add your own sources below and allow the corresponding origins above.
+  # - id: prometheus
+  #   label: Prometheus
+  #   kind: prometheus
+  #   url: http://prometheus.home.arpa:9090
+
+  # - id: nas-volume
+  #   label: NAS volume
+  #   kind: snmp_volume
+  #   url: http://prometheus.home.arpa:9090
+  #   job: snmp
+  #   instance: nas.home.arpa
+  #   volume: /volume1

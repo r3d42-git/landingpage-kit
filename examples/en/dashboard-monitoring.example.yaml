@@ -1,0 +1,24 @@
+# A complete dashboard using the sources in integrations.example.yaml.
+settings:
+  title: My dashboard
+  subtitle: Services and metrics
+
+groups:
+  - id: services
+    name: Services
+    icon: monitor-activity
+    items:
+      - id: dashboard
+        name: Dashboard
+        kind: http
+        url: /healthz
+        source: dashboard-health
+        subtitle: The container checks its own HTTP health endpoint.
+        tag: HTTP
+      - id: disk
+        name: Disk usage
+        kind: nas
+        url: /
+        source: disk-usage
+        subtitle: Capacity of the filesystem measured by the example collector.
+        tag: Storage

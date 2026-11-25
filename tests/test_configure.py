@@ -36,6 +36,16 @@ class SetupTests(unittest.TestCase):
         with (EXAMPLES / "integrations.example.yaml").open("rb") as file:
             self.assertEqual([s["id"] for s in configure.source_document(file)["sources"]], ["dashboard-health", "disk-usage"])
 
+    def test_english_cli_and_example_files(self):
+        with patch.dict(os.environ, {"DASHBOARD_LANGUAGE": "en"}):
+            for name in ("dashboard.example.yaml", "dashboard-monitoring.example.yaml"):
+                yaml_file = EXAMPLES / "en" / name
+                self.assertEqual(self.run_board_command(["check"], yaml_file.read_bytes()), "Dashboard YAML is valid.\n")
+            sources = (EXAMPLES / "en" / "integrations.example.yaml").read_bytes()
+            self.assertEqual(self.run_board_command(["check-sources"], sources), "Data source YAML is valid.\n")
+            with self.assertRaisesRegex(ValueError, "Invalid YAML. Line 2, column 1"):
+                self.run_board_command(["check"], b"title: duplicate\ntitle: value\n")
+
     def test_invalid_yaml_reports_location_without_input_values(self):
         for content in (b"title: private\ntitle: private2\n", b"item: &private [*private]\n"):
             with self.subTest(content=content), self.assertRaisesRegex(ValueError, "Ungültiges YAML. Zeile") as error:

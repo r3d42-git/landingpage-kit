@@ -20,8 +20,8 @@ RUN apt-get update \
     && pip install --no-cache-dir -r tools/requirements-configure.txt \
     && install -d -m 0700 -o 10001 -g 10001 /data /data/config /data/seed
 COPY LICENSE THIRD_PARTY_NOTICES.txt ./
-COPY server.py integrations.py public_youtube.py ./
-COPY tools/manage.py tools/configure.py ./tools/
+COPY server.py integrations.py public_youtube.py localization.py ./
+COPY tools/manage.py tools/configure.py tools/cli_language.py ./tools/
 COPY deploy/start.py ./deploy/
 RUN ln -s tools/manage.py /app/manage.py
 COPY --from=frontend /build/dist/ ./web/dist/

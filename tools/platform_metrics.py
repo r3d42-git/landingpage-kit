@@ -18,6 +18,8 @@ if __package__:
 else:
     from collect_checkmk import command_arguments, livestatus, measurement as snapshot, snapshot_filename, write_snapshot
 
+from localization import Text, number, phrase
+
 
 MAX_BODY = 1024 * 1024
 PVE_MAX_AGE = 180
@@ -25,7 +27,7 @@ PVE_METRICS = (
     "up", "pve_up", "pve_guest_info", "pve_memory_usage_bytes", "pve_memory_size_bytes",
     "pve_disk_usage_bytes", "pve_disk_size_bytes",
 )
-CHECK_STATE = {0: "OK", 1: "Warnung", 2: "Kritisch", 3: "Unbekannt"}
+CHECK_STATE = {0: "OK", 1: Text("Warnung", "Warning"), 2: Text("Kritisch", "Critical"), 3: Text("Unbekannt", "Unknown")}
 
 
 @dataclass(frozen=True)
@@ -42,13 +44,9 @@ def finite(value):
     return number
 
 
-def format_number(value, decimals=1):
-    return f"{value:,.{decimals}f}".translate(str.maketrans(",.", ".,"))
-
-
 def format_capacity(used, total, *, unit="GiB"):
     scale = 1024**3 if unit == "GiB" else 10**9
-    return f"{format_number(used / scale)} / {format_number(total / scale)} {unit}"
+    return phrase("{} / {} {}", "{} / {} {}", number(used / scale, 1), number(total / scale, 1), unit)
 
 
 def pve_query(job, instance):
@@ -137,9 +135,12 @@ def pve_snapshot(rows, now):
     if scrape is None or scrape.value not in {0, 1} or not 0 < scrape.observed_at <= now + 10:
         raise ValueError("Aktueller PVE-Scrape-Status fehlt")
     if not fresh(scrape, now):
-        return snapshot("stale", min(scrape.observed_at, now), detail="PVE-Exporter-Messung ist veraltet")
+        return snapshot("stale", min(scrape.observed_at, now),
+                        detail=Text("PVE-Exporter-Messung ist veraltet", "The PVE exporter measurement is stale"))
     if scrape.value == 0:
-        return snapshot("down", scrape.observed_at, detail="Prometheus kann den PVE-Exporter nicht abfragen")
+        return snapshot("down", scrape.observed_at, detail=Text(
+            "Prometheus kann den PVE-Exporter nicht abfragen", "Prometheus cannot scrape the PVE exporter",
+        ))
     nodes = {
         resource: sample for (name, resource), sample in samples.items()
         if name == "pve_up" and isinstance(resource, str) and resource.startswith("node/")
@@ -147,7 +148,8 @@ def pve_snapshot(rows, now):
     if not nodes or any(not fresh(sample, now) or sample.value not in {0, 1} for sample in nodes.values()):
         raise ValueError("Aktuelle PVE-Knotenmessungen fehlen")
     if all(sample.value == 0 for sample in nodes.values()):
-        return snapshot("down", min(sample.observed_at for sample in nodes.values()), detail="Kein PVE-Knoten aktiv")
+        return snapshot("down", min(sample.observed_at for sample in nodes.values()),
+                        detail=Text("Kein PVE-Knoten aktiv", "No PVE nodes are active"))
     statuses = {
         resource: sample for (name, resource), sample in samples.items()
         if name == "pve_up" and isinstance(resource, str) and resource.startswith(("lxc/", "qemu/"))
@@ -163,16 +165,17 @@ def pve_snapshot(rows, now):
         raise ValueError("PVE-Gastinventar ist unvollständig")
     observed = [scrape.observed_at, *(sample.observed_at for sample in nodes.values())]
     metrics = []
-    for prefix, label in (("qemu/", "VMs aktiv"), ("lxc/", "LXC aktiv")):
+    for prefix, label in (("qemu/", Text("VMs aktiv", "Active VMs")), ("lxc/", Text("LXC aktiv", "Active LXC containers"))):
         current = [resource for resource, guest in guests.items()
                    if resource.startswith(prefix) and guest.labels.get("template", "0") != "1"]
         active = sum(statuses[resource].value == 1 for resource in current)
         metrics.append((label, f"{active} / {len(current)}"))
         observed.extend(min(guests[resource].observed_at, statuses[resource].observed_at) for resource in current)
-    append_capacity(metrics, observed, samples, nodes, "memory", "Host-RAM", now)
-    append_capacity(metrics, observed, samples, nodes, "disk", "Host-Dateisystem", now)
+    append_capacity(metrics, observed, samples, nodes, "memory", Text("Host-RAM", "Host RAM"), now)
+    append_capacity(metrics, observed, samples, nodes, "disk", Text("Host-Dateisystem", "Host filesystem"), now)
     status = "warning" if any(sample.value == 0 for sample in nodes.values()) else "ok"
-    return snapshot(status, min(observed), metrics, detail="Ein PVE-Knoten ist inaktiv" if status == "warning" else None)
+    return snapshot(status, min(observed), metrics,
+                    detail=Text("Ein PVE-Knoten ist inaktiv", "A PVE node is inactive") if status == "warning" else None)
 
 
 def fetch_pbs(command, host):
@@ -216,27 +219,29 @@ def pbs_snapshot(rows, now, *, datastores_prefix, gc_service, https_service):
     ]
     last = max((stamp for _, _, checked, _, stamp, _ in relevant if checked and 0 < stamp <= now + 10), default=0)
     if not current:
-        return snapshot("stale" if last else "unknown", min(last or now, now), detail="Keine frische PBS-Prüfung")
+        return snapshot("stale" if last else "unknown", min(last or now, now),
+                        detail=Text("Keine frische PBS-Prüfung", "No recent PBS check"))
     metrics, percentages = [], []
     state = "ok"
     datastores = [row for row in current if row[0].startswith(datastores_prefix)]
     for name, result, _, performance in sorted(datastores):
-        label = "Datenspeicher" if len(datastores) == 1 else f"Datenspeicher {name.removeprefix(datastores_prefix)}"[:100]
+        suffix = "" if len(datastores) == 1 else " " + name.removeprefix(datastores_prefix)
+        label = Text(f"Datenspeicher{suffix}"[:100], f"Datastore{suffix}"[:100])
         try:
             used, total = datastore_capacity(performance)
             percent = 100 * used / total
             percentages.append(percent)
-            capacity = f"{format_capacity(used, total, unit='GB')} · {format_number(percent)} %"
-            value = capacity if result == 0 else f"{capacity} · {CHECK_STATE[result]}"
+            capacity = phrase("{} · {} %", "{} · {}%", format_capacity(used, total, unit="GB"), number(percent, 1))
+            value = capacity if result == 0 else phrase("{} · {}", "{} · {}", capacity, CHECK_STATE[result])
         except (KeyError, ValueError, TypeError):
-            state, value = "warning", "Messwerte fehlen"
+            state, value = "warning", Text("Messwerte fehlen", "Metrics missing")
             if result in {1, 2}:
-                value = f"{CHECK_STATE[result]} · {value}"
+                value = phrase("{} · {}", "{} · {}", CHECK_STATE[result], value)
         metrics.append((label, value))
     checks = {name: result for name, result, _, _ in current}
-    for name, label in ((gc_service, "Speicherbereinigung"), (https_service, "HTTPS")):
+    for name, label in ((gc_service, Text("Speicherbereinigung", "Garbage collection")), (https_service, "HTTPS")):
         if name in checks:
-            value = "Erreichbar" if label == "HTTPS" and checks[name] == 0 else CHECK_STATE[checks[name]]
+            value = Text("Erreichbar", "Reachable") if label == "HTTPS" and checks[name] == 0 else CHECK_STATE[checks[name]]
             metrics.append((label, value))
     complete = bool(datastores) and {https_service, gc_service} <= checks.keys()
     if len(current) != len(relevant) or not complete or any(value != 0 for value in checks.values()):
@@ -245,7 +250,8 @@ def pbs_snapshot(rows, now, *, datastores_prefix, gc_service, https_service):
         state = "down"
     return snapshot(
         state, min(stamp for _, _, stamp, _ in current), metrics,
-        detail="PBS-Prüfungen teilweise ausstehend oder veraltet" if len(current) != len(relevant) or not complete else None,
+        detail=Text("PBS-Prüfungen teilweise ausstehend oder veraltet", "Some PBS checks are pending or stale")
+        if len(current) != len(relevant) or not complete else None,
         progress=round(max(percentages), 1) if percentages else None,
     )
 

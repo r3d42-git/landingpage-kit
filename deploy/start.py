@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.cli_language import message
+
 
 def main():
     password = os.environ.get("ADMIN_PASSWORD_FILE")
@@ -20,7 +23,7 @@ def main():
 
     # Keep a configured password inactive until the HTTPS listener is available.
     if os.environ.get("ADMIN_PASSWORD_FILE") and not os.environ.get("TLS_CERT_FILE"):
-        raise SystemExit("Für die Bearbeitung muss ein TLS-Zertifikat eingerichtet sein.")
+        raise SystemExit(message("Für die Bearbeitung muss ein TLS-Zertifikat eingerichtet sein."))
     server = Path(__file__).resolve().parents[1] / "server.py"
     os.execv(sys.executable, [sys.executable, str(server)])
 

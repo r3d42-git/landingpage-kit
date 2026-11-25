@@ -1,6 +1,6 @@
 services:
   landingpage:
-    image: ${DASHBOARD_IMAGE:-ghcr.io/r3d42-git/landingpage-kit:1.0.0}
+    image: ${DASHBOARD_IMAGE:-ghcr.io/r3d42-git/landingpage-kit:1.1.0}
     restart: unless-stopped
     init: true
     read_only: true
@@ -9,6 +9,7 @@ services:
     mem_limit: 192m
     pids_limit: 96
     environment:
+      DASHBOARD_LANGUAGE: ${DASHBOARD_LANGUAGE:-de}
       ADMIN_PASSWORD_FILE: /data/config/admin-password
       INTEGRATIONS_FILE: /data/config/integrations.json
       INTEGRATIONS_METRICS_DIR: /run/metrics
