@@ -1,0 +1,32 @@
+services:
+  landingpage:
+    image: ${DASHBOARD_IMAGE:-ghcr.io/r3d42-git/landingpage-kit:1.0.0}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    pids_limit: 96
+    environment:
+      ADMIN_PASSWORD_FILE: /data/config/admin-password
+      INTEGRATIONS_FILE: /data/config/integrations.json
+      INTEGRATIONS_METRICS_DIR: /run/metrics
+      INFRASTRUCTURE_SOURCE: ${DASHBOARD_INFRASTRUCTURE_SOURCE:-}
+      TLS_CERT_FILE: /data/config/tls.pem
+      TLS_KEY_FILE: /data/config/tls.pem
+      DASHBOARD_EDIT_URL: https://${DASHBOARD_EDIT_HOST:-localhost}:${DASHBOARD_HTTPS_PORT:-8443}/?edit=1
+    ports:
+      - "${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_HTTP_PORT:-8080}:8080"
+      - "${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - dashboard-data:/data
+    tmpfs:
+      - /tmp:size=8m,noexec,nosuid,nodev
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+volumes:
+  dashboard-data:

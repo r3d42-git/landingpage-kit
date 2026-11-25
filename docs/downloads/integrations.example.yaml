@@ -1,0 +1,35 @@
+# Ziele für serverseitige Abfragen als Protokoll, Host und ggf. Port eintragen.
+# Die Adresse einer Dashboard-Kachel ist unabhängig von ihrem Messziel.
+allowed_endpoints:
+  - http://127.0.0.1:8080
+  # - http://prometheus.home.arpa:9090
+
+sources:
+  - id: dashboard-health
+    label: HTTP-Status der Landingpage
+    kind: http
+    url: http://127.0.0.1:8080/healthz
+    statuses: [200]
+    expect_json:
+      ok: true
+
+  - id: disk-usage
+    label: Speicherbelegung
+    kind: snapshot
+    display_kind: nas
+    file: disk-usage.json
+    max_age: 180
+
+  # Zusätzliche Quellen nach eigenen Angaben ergänzen. Freigabe oben eintragen.
+  # - id: prometheus
+  #   label: Prometheus
+  #   kind: prometheus
+  #   url: http://prometheus.home.arpa:9090
+
+  # - id: nas-volume
+  #   label: NAS-Volume
+  #   kind: snmp_volume
+  #   url: http://prometheus.home.arpa:9090
+  #   job: snmp
+  #   instance: nas.home.arpa
+  #   volume: /volume1
