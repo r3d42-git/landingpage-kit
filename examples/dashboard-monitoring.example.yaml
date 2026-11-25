@@ -1,0 +1,24 @@
+# Vollständiges Beispiel für die Messquellen aus integrations.example.yaml.
+settings:
+  title: Meine Startseite
+  subtitle: Dienste und Messwerte
+
+groups:
+  - id: dienste
+    name: Dienste
+    icon: monitor-activity
+    items:
+      - id: dashboard
+        name: Landingpage
+        kind: http
+        url: /healthz
+        source: dashboard-health
+        subtitle: Der Container prüft seinen eigenen HTTP-Status.
+        tag: HTTP
+      - id: disk
+        name: Datenträger
+        kind: nas
+        url: /
+        source: disk-usage
+        subtitle: Kapazität des mit dem Beispielskript gemessenen Dateisystems.
+        tag: Speicher

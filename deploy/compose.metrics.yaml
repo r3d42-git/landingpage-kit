@@ -1,0 +1,9 @@
+services:
+  landingpage:
+    volumes:
+      - type: bind
+        source: ${DASHBOARD_METRICS_DIRECTORY:-./instance/metrics}
+        target: /run/metrics
+        read_only: true
+        bind:
+          create_host_path: false

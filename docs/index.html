@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Deine eigene Landingpage mit Docker Compose installieren, Dienstkacheln anlegen, Messwerte anbinden und Daten sichern.">
+<title>Landingpage · Handbuch</title>
+<link rel="stylesheet" href="handbuch.css"><script defer src="handbuch.js"></script>
+</head>
+<body>
+<a class="skip" href="#inhalt">Zum Inhalt</a>
+<header><div class="bar"><a class="wordmark" href="#anfang"><i aria-hidden="true"></i> Landingpage</a><nav aria-label="Projekt"><a href="#dateien">Downloads</a><a href="https://github.com/r3d42-git/landingpage-kit">GitHub ↗</a></nav></div></header>
+<main id="inhalt">
+<div class="hero" id="anfang">
+<div class="herotext"><p class="eyebrow">Handbuch für den Eigenbetrieb</p>
+<h1>Deine eigene<br>Landingpage.</h1>
+<p class="intro">Dienste öffnen, ihren Zustand sehen und alles an einem Ort ordnen. So richtest du die Startseite auf deinem eigenen Server ein.</p>
+<div class="actions"><a class="primary" href="#installation">Installation starten <span aria-hidden="true">↓</span></a><a href="#agent">Mit einem Agenten einrichten</a></div></div>
+<aside class="overview" aria-label="Zugriff nach der Installation"><div class="diagram-head"><span aria-hidden="true" class="server-icon"></span><strong>Deine Instanz</strong></div>
+<div class="routes"><div><b>Startseite öffnen</b><small>Lesen</small><code>HTTP · 8080</code></div><div><b>Kacheln bearbeiten</b><small>Mit Editorpasswort</small><code>HTTPS · 8443</code></div></div></aside>
+</div>
+<div class="layout">
+<nav class="contents" aria-label="Inhalt"><strong>In diesem Handbuch</strong>
+<a href="#installation">Installation</a><a href="#agent">Einrichtung mit Agent</a><a href="#editor">Erste Schritte im Editor</a><a href="#kacheln">Kacheltypen</a><a href="#messwerte">Messquellen einrichten</a><a href="#betrieb">Sicherung und Updates</a><a href="#hilfe">Fehler beheben</a><a href="#dateien">Projektdateien</a>
+</nav>
+<div class="chapters">
+<section id="installation"><h2>Installation</h2>
+<p>Du brauchst einen Host mit laufendem Docker und dem Compose-Plug-in. Die Standardinstallation bindet beide Ports an Loopback. Sie lässt sich direkt auf dem Host nutzen. Für den Zugang von anderen Geräten findest du weiter unten die LAN-Einstellungen.</p>
+<p>Die Befehle verwenden eine Unix-Shell. Auf Windows kannst du sie in WSL mit Docker-Anbindung ausführen.</p><h3>1. Dateien vorbereiten</h3>
+<p>Lade das <a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.0.0/landingpage-kit-1.0.0.zip">Installationspaket für Version 1.0.0</a> herunter. Entpacke es in einen neuen Ordner und öffne dort ein Terminal. Alle folgenden Compose-Befehle laufen im Ordner mit <code>compose.yaml</code>.</p>
+<pre><code>docker compose version
+docker info
+cp examples/dashboard.example.yaml dashboard.yaml</code></pre>
+<p>Die einzelnen YAML-Dateien und das vollständige Paket findest du auch unter <a href="#dateien">Projektdateien</a>. Das Offline-Handbuch im Paket öffnest du über <code>docs/index.html</code>.</p><p>Öffne <code>dashboard.yaml</code> in einem Texteditor. Passe Titel, Kategorien und Links an oder probiere das Beispiel unverändert aus. Behalte die eindeutigen IDs bei, wenn du bestehende Einträge weiterpflegst.</p>
+<h3>2. Startseite und Editor einrichten</h3>
+<pre><code>docker compose pull
+docker compose run --rm --no-deps -T landingpage python tools/configure.py init &lt; dashboard.yaml
+docker compose run --rm --no-deps landingpage python tools/configure.py password
+docker compose up -d
+docker compose ps</code></pre>
+<p>Wähle mindestens 16 Zeichen ohne Leerzeichen an Anfang oder Ende. Das Passwortwerkzeug fragt das Editorpasswort zweimal verdeckt ab und erzeugt für eine neue Installation auch das lokale TLS-Zertifikat. Verwahre das Passwort in deinem Passwortmanager. Die Initialisierung ist für einen neuen Datenstand vorgesehen.</p>
+<h3>3. Start und Anmeldung prüfen</h3>
+<p>Öffne auf demselben Rechner <a href="http://127.0.0.1:8080/">http://127.0.0.1:8080/</a>. Unter <b>Bearbeiten</b> wechselst du zum <a href="https://localhost:8443/?edit=1">HTTPS-Editor</a>. Der HTTP-Port dient der Leseansicht. Der Editor verwendet ein Zertifikat einer eigens erzeugten lokalen Zertifizierungsstelle (CA). Exportiere ihr öffentliches Zertifikat auf dem Installationshost. Übertrage es auf vertrauenswürdigem Weg zu deinem Browser, vergleiche den SHA-256-Fingerabdruck der CA und hinterlege sie auf deinem Gerät als vertrauenswürdig. Mit curl kannst du das Zertifikat gezielt für einen Aufruf verwenden.</p>
+<pre><code>docker compose exec -T landingpage python tools/configure.py certificate &gt; landingpage-local.crt
+openssl x509 -in landingpage-local.crt -noout -fingerprint -sha256
+curl --cacert landingpage-local.crt https://localhost:8443/</code></pre>
+<details><summary>Zugriff im eigenen LAN einrichten</summary><p>Wähle eine lokale Adresse des Hosts und einen Namen, den die Geräte im LAN dorthin auflösen. Ergänze die folgenden Variablen in der <code>.env</code> neben <code>compose.yaml</code>. Ersetze die Beispieladresse und den Namen durch deine eigenen Angaben. Ports müssen frei sein.</p>
+<pre><code>DASHBOARD_BIND=192.0.2.10
+DASHBOARD_EDIT_HOST=dashboard.home.arpa
+DASHBOARD_HTTP_PORT=8080
+DASHBOARD_HTTPS_PORT=8443</code></pre>
+<p>Erzeuge auf dem Host das Zertifikat für deinen gewählten Namen, starte den Container mit den geänderten Einstellungen neu und exportiere die neu erzeugte CA wie oben. Aktualisiere die Vertrauenseinstellung deiner Geräte. Begrenze den Zugriff per Firewall auf das gewünschte Netz. Wer die Leseadresse erreicht, kann die veröffentlichten Kacheln und Messwerte einsehen.</p>
+<pre><code>docker compose run --rm --no-deps landingpage python tools/configure.py tls-local --host dashboard.home.arpa
+docker compose up -d --force-recreate</code></pre></details>
+<details><summary>Container-Image offline laden oder lokal bauen</summary><p>Lade aus dem Release das Imagearchiv für die Architektur des Docker-Hosts herunter (<code>amd64</code> für x86-64, <code>arm64</code> für ARM64) und prüfe die SHA-256-Prüfsumme mit dem Eintrag in <code>SHA256SUMS</code>. Übertrage Archiv und Installationspaket zum Zielhost. Lade dort das Image und fahre beim Befehl <code>configure.py init</code> fort.</p>
+<pre><code>docker load -i landingpage-kit-linux-amd64.tar.gz</code></pre>
+<p>Für einen lokalen Build entpacke den <a href="https://github.com/r3d42-git/landingpage-kit/archive/refs/tags/v1.0.0.zip">Quellcode derselben Version</a>. Baue mit beiden Compose-Dateien. Nutze bei den folgenden Compose-Befehlen ebenfalls beide <code>-f</code>-Optionen. Der Build benötigt Zugriff auf die Basisimages und Paketquellen.</p>
+<pre><code>docker compose -f compose.yaml -f deploy/compose.build.yaml build</code></pre></details>
+</section>
+<section id="agent"><h2>Einrichtung mit einem Agenten</h2>
+<p>Kopiere den Auftrag in einen Agenten deiner Wahl, der auf deinem Zielsystem arbeiten darf. Ergänze den gewünschten Installationsort. Ein rein textbasierter Assistent kann dir die Schritte stattdessen zum Ausführen geben.</p>
+<div class="prompt"><div class="promptbar"><strong>Installationsauftrag</strong><button hidden id="copy" type="button">Prompt kopieren</button></div><p id="auftrag">Richte das Projekt https://github.com/r3d42-git/landingpage-kit nach dem zugehörigen Handbuch auf meinem Zielsystem ein. Prüfe Betriebssystem, Docker Compose, freie Ports und vorhandene Dateien. Kläre mit mir den Installationsordner und ob ich ausschließlich auf diesem Rechner oder auch im LAN zugreifen möchte. Verwende die offiziellen Dateien der gewählten Projektversion und die mitgelieferten neutralen Startdaten. Erhalte vorhandene Instanzen, verwende ausschließlich die vereinbarte Bind-Adresse und zeige keine Passwörter oder privaten Schlüssel im Chat. Richte den Dienst ein, prüfe den HTTP-Lesezugriff sowie den HTTPS-Editor und zeige mir die URLs, den Weg zur Passwortverwaltung und die Schritte für Sicherung und Update. Bitte mich bei einer erforderlichen lokalen Eingabe um die konkrete Aktion. Optionale Messquellen richten wir erst ein, wenn ich die gewünschten Ziele angegeben habe.</p><span id="copystatus" role="status"></span></div></section>
+<section id="editor"><h2>Erste Schritte im Editor</h2>
+<p>Mit der mitgelieferten Startdatei erscheint „Meine Startseite“. Unter <b>Einstieg</b> findest du das Handbuch und die „Beispielseite“. <b>Eigene Dienste</b> ist als leere Kategorie für deine ersten Einträge vorbereitet. Du kannst dort direkt eine Kachel anlegen oder eine zusätzliche Kategorie erstellen.</p>
+<ol><li>Öffne die Startseite und wähle <b>Bearbeiten</b>. Der Browser öffnet die HTTPS-Anmeldung. Gib dein zuvor gewähltes Editorpasswort ein.</li>
+<li>Wähle am Ende der Seite <b>Kategorie hinzufügen</b>. Trage etwa „Werkzeuge“ ein, wähle ein <b>Kategoriesymbol</b> und bestätige mit <b>Übernehmen</b>.</li>
+<li>Öffne das Plus neben „Werkzeuge“. Trage als <b>Name</b> „Mein Wiki“ und als <b>Adresse</b> die URL deines Wikis ein. Ergänze eine Beschreibung und lasse <b>Überwachung</b> auf <b>Nur Verknüpfung</b>. Unter <b>Weitere Optionen</b> kannst du ein Schlagwort und das Verhalten beim Öffnen festlegen.</li>
+<li>Wähle <b>Übernehmen</b> und dann <b>Vorschau</b>. Mit <b>Weiter bearbeiten</b> kehrst du zum Entwurf zurück. <b>Speichern</b> veröffentlicht die Änderungen auf deiner Instanz für alle Geräte.</li></ol>
+<p>Über den Stift an einer Kachel änderst du ihren Inhalt. <b>Verschieben</b> öffnet die Auswahl für Kategorie und Position, auch auf dem Smartphone. Der Stift am Kategorienamen ändert Symbol, Namen und Reihenfolge. Den Seitentitel und Untertitel findest du im Bearbeitungsmodus unter <b>Einstellungen</b>.</p>
+<p>In der Leseansicht filtert das Suchfeld die Dienste. Ein Klick auf einen Status in der Kopfzeile begrenzt die Ansicht auf passende Kacheln. Ein zweiter Klick hebt den Statusfilter auf.</p></section>
+<section id="kacheln"><h2>Den passenden Kacheltyp wählen</h2>
+<p>Die Adresse öffnet das Ziel beim Anklicken. Das Feld <b>Überwachung</b> bestimmt, welche zusätzliche Information die Kachel anzeigt.</p>
+<dl class="tiles">
+<dt>Nur Verknüpfung</dt><dd>Ein Lesezeichen für Wiki, Dokumentation oder Weboberfläche. Die Option <b>Erreichbarkeit prüfen</b> ruft die URL vom Server aus etwa alle fünf Minuten ab. Zwei aufeinanderfolgende Fehler melden einen Ausfall. Öffentliche HTTP(S)-Adressen auf Standardports sind möglich. Interne Ziele und abweichende Ports benötigen eine explizite Freigabe.</dd>
+<dt>HTTP-Erreichbarkeit</dt><dd>Prüft eine freigegebene Webadresse. Wähle <b>Adresse des Dienstes</b> oder eine vorbereitete HTTP-Messquelle, wenn etwa der Klick zur Oberfläche und die Prüfung zu einem separaten Health-Endpunkt führen soll.</dd>
+<dt>Pi-hole</dt><dd>Wähle eine Pi-hole-Quelle für DNS-Anfragen und blockierte Anfragen. Zusätzliche Werte kannst du auf der Kachel aufklappen. Der Adapter braucht Zugriff auf die passende Statistik-API.</dd>
+<dt>NAS</dt><dd>Wähle eine Speicherquelle für tatsächlich gemessene Kapazität und Auslastung. Für ein NAS eignen sich ein lokaler Snapshot oder über Prometheus bereitgestellte SNMP-Speicherdaten.</dd>
+<dt>Dienstmetriken</dt><dd>Zeigt benannte Messwerte einer Quelle. Geeignet für die aktiven Scrape-Ziele eines Prometheus-Servers, zwei TCP-Prüfungen eines Hosts oder eigene Werte aus einer Snapshot-Datei.</dd>
+<dt>YouTube-Kanäle</dt><dd>Trage unter <b>Kanal hinzufügen</b> ein öffentliches @Handle, eine Kanal-ID oder eine Kanaladresse ein. Klicke auf <b>Hinzufügen</b>, anschließend auf <b>Übernehmen</b> und <b>Speichern</b>. Eine Kachel fasst bis zu zwölf Kanäle zusammen und zeigt neue Videos der letzten 24 Stunden sowie den jüngsten Upload. Hierfür ruft der Server öffentliche Feeds ab.</dd>
+</dl></section>
+<section id="messwerte"><h2>Eine Messquelle einrichten</h2>
+<p>Jede Quelle bekommt eine eindeutige <code>id</code> und einen sichtbaren Namen (<code>label</code>). <code>kind</code> wählt den Adapter, <code>display_kind</code> ordnet die Quelle dem passenden Kacheltyp im Editor zu. Verwalte deine Quellen in einer eigenen <code>integrations.yaml</code>. Kopiere dazu die Beispieldatei, passe die Werte an und importiere die gesamte gewünschte Quellenliste.</p>
+<pre><code>cp examples/integrations.example.yaml integrations.yaml</code></pre>
+<p>Für einen ersten Funktionstest enthält die Datei bereits <b>HTTP-Status der Landingpage</b>. Importiere sie mit den Befehlen aus Schritt 3 unten, füge eine Kachel mit Adresse <code>/healthz</code> hinzu und wähle <b>HTTP-Erreichbarkeit → HTTP-Status der Landingpage</b>. Nach dem Speichern prüft der Container seinen eigenen Statusendpunkt.</p>
+<h3>Beispiel A · HTTP-Status eines Dienstes</h3>
+<ol><li>Ermittle den Health-Endpunkt eines eigenen Dienstes. Das folgende Beispiel erwartet einen erfolgreichen JSON-Aufruf mit dem Feld <code>status</code> und dem Wert <code>UP</code>. Ersetze die Beispieldomain an beiden Stellen durch dein Ziel.</li>
+<li>Füge die Origin (Schema, Host und gegebenenfalls Port) und den Quelleneintrag in die bestehenden Listen ein. Eine leere Konfiguration kannst du so befüllen.</li></ol>
+<pre><code>allowed_endpoints:
+  - https://wiki.example.org
+sources:
+  - id: wiki-status
+    label: Wiki-Status
+    kind: http
+    display_kind: http
+    url: https://wiki.example.org/health
+    expect_json:
+      status: UP</code></pre>
+<p>Für eine reine HTTP-Statusprüfung entfällt <code>expect_json</code>. Standardmäßig gelten 200 und 204 als Erfolg.</p>
+<ol start="3"><li>Speichere die Datei als <code>integrations.yaml</code>. Importiere sie, kontrolliere die verfügbaren Quellen und öffne anschließend den Editor neu.</li></ol>
+<pre><code>docker compose run --rm --no-deps -T landingpage python tools/configure.py sources &lt; integrations.yaml
+docker compose exec -T landingpage python manage.py sources</code></pre>
+<ol start="4"><li>Öffne den Stift der Wiki-Kachel. Wähle <b>HTTP-Erreichbarkeit → Messquelle → Wiki-Status</b>, dann <b>Übernehmen → Speichern</b>. Nach dem ersten Abruf siehst du den gemessenen Zustand. Der Dienst muss aus dem Container per DNS und Netzwerk erreichbar sein.</li></ol>
+<h3>Beispiel B · Speicherplatz vom Host anzeigen</h3>
+<p>Mit einem Snapshot gelangen auch Werte aus dem Betriebssystem in eine Kachel. Der mitgelieferte Sammler ermittelt den Speicherplatz des Dateisystems, das du mit <code>--path</code> auswählst. Führe ihn auf dem Host mit Python 3 aus. Die Messdatei wird für den Container nur lesbar eingebunden.</p>
+<pre><code>mkdir -p instance/metrics
+python3 examples/write-disk-snapshot.py ./instance/metrics/disk-usage.json --path /
+docker compose -f compose.yaml -f deploy/compose.metrics.yaml up -d</code></pre>
+<p>Verwende für den weiteren Betrieb dieselben Compose-Dateien, beispielsweise über <code>COMPOSE_FILE=compose.yaml:deploy/compose.metrics.yaml</code> in der <code>.env</code> auf einem Linux-Host. In der mitgelieferten <code>integrations.example.yaml</code> ist die passende Quelle bereits definiert. Falls du eine eigene Quellenliste verwendest, ergänze den folgenden Eintrag einmal unter <code>sources</code>.</p>
+<pre><code>  - id: disk-usage
+    label: Speicherbelegung
+    kind: snapshot
+    display_kind: nas
+    file: disk-usage.json
+    max_age: 180</code></pre>
+<ol><li>Importiere die Quellen mit <code>configure.py sources</code> wie im HTTP-Beispiel. In der Ausgabe von <code>manage.py sources</code> muss die Quelle als <code>nas</code> erscheinen.</li><li>Füge im Editor eine Kachel hinzu. Trage Name und Zieladresse ein, wähle <b>NAS</b> und unter <b>Messquelle</b> den Namen der Quelle. Klicke auf <b>Übernehmen</b> und <b>Speichern</b>.</li><li>Für regelmäßige Messwerte plane den Python-Aufruf auf dem Host beispielsweise einmal pro Minute per Cron oder systemd-Timer ein. Verwende dabei absolute Pfade zu Python, Skript und Ausgabedatei. <code>max_age: 180</code> markiert die Daten nach drei Minuten ohne neue Messung als veraltet.</li></ol>
+<details><summary>Beispiel für einen minütlichen Cronjob</summary><p>Ermittle die Pfade mit <code>command -v python3</code> und <code>pwd</code> im Installationsordner. Öffne mit <code>crontab -e</code> die vorhandene Tabelle des Benutzers, der in das Messverzeichnis schreiben darf. Ergänze eine Zeile und ersetze die Beispielpfade durch deine eigenen. Prüfe nach zwei Minuten den Zeitstempel von <code>disk-usage.json</code>.</p>
+<pre><code>* * * * * /usr/bin/python3 /opt/landingpage-kit/examples/write-disk-snapshot.py /opt/landingpage-kit/instance/metrics/disk-usage.json --path /</code></pre></details>
+<p>Andere Sammler können dasselbe Format schreiben. <code>observed_at</code> ist die Messzeit in Unix-Sekunden, <code>state</code> einer der Werte <code>ok</code>, <code>warning</code>, <code>down</code>, <code>unknown</code> oder <code>stale</code>. <code>metrics</code> enthält Paare aus <code>label</code> und <code>value</code>. <code>progress</code> ist optional und liegt zwischen 0 und 100. Schreibe zunächst eine temporäre Datei und ersetze die Zieldatei anschließend atomar.</p>
+<h3>Weitere Adapter</h3>
+<dl class="tiles"><dt>TCP-Port und Host</dt><dd><code>tcp</code> verwendet eine <code>tcp://</code>-URL mit explizitem Port. <code>host</code> benötigt zwei Einträge unter <code>targets</code>, jeweils mit <code>label</code> und <code>url</code> für denselben Host auf unterschiedlichen Ports. Gib jede Origin einzeln unter <code>allowed_endpoints</code> frei.</dd>
+<dt>Pi-hole</dt><dd><code>kind: pihole</code> liest die kompatible Statistik-API an der angegebenen <code>url</code>. Optional ergänzen <code>blocking_url</code> auf derselben Origin und eine lokale <code>dns_file</code> die Daten um Blockierungsstatus und DNS-Messung.</dd>
+<dt>Prometheus und SNMP-Speicher</dt><dd><code>prometheus</code> erwartet als <code>url</code> die Basisadresse. <code>snmp_volume</code> nutzt ebenfalls die Prometheus-Basisadresse, zusätzlich <code>job</code>, <code>instance</code> und den Wert von <code>hrStorageDescr</code> als <code>volume</code>. Der Exporter muss Größe, belegte Einheiten und Einheitengröße des ausgewählten Volumes liefern.</dd>
+<dt>Vorhandene Host-Sammler</dt><dd>Die Werkzeuge unter <code>tools/</code> können Checkmk-Livestatus, Proxmox-Messwerte oder Speicherbelegung über einen beschränkten SSH-Zugang lesen. Die verfügbaren Argumente zeigt <code>python3 tools/collect_checkmk.py --help</code>, <code>python3 tools/platform_metrics.py --help</code> bzw. <code>python3 tools/collect_ssh_storage.py --help</code>. Zugangsdaten, private Schlüssel und Monitoring-Berechtigungen verwaltest du auf dem Host.</dd></dl>
+</section>
+<section id="betrieb"><h2>Sicherung und Updates</h2>
+<h3>Einträge und Logos exportieren</h3>
+<p>Speichere den Entwurf und öffne angemeldet <b>Einstellungen → Datensicherung → Exportieren</b>. Die ZIP-Datei enthält die gespeicherten Kategorien, Kacheln und lokalen Logos. Zum Einspielen wähle <b>Wiederherstellen</b>, öffne deine ZIP-Datei und bestätige den Austausch der aktuellen Inhalte. Sichere zuvor den aktuellen Stand.</p>
+<pre><code>umask 077
+docker compose exec -T landingpage python manage.py backup &gt; startseite.zip
+docker compose exec -T landingpage python manage.py restore --confirm &lt; startseite.zip</code></pre>
+<h3>Die gesamte Instanz sichern und zurückholen</h3>
+<p>Das Compose-Volume <code>dashboard-data</code> enthält die SQLite-Datenbank, die aktiven Quellen, Startdaten, das Editorpasswort und den privaten TLS-Schlüssel. Sichere es konsistent bei gestopptem Dienst. Wähle für jede Sicherung einen neuen Dateinamen. Starte die App nach dem Export wieder und kontrolliere den Archivinhalt.</p>
+<pre><code>umask 077
+docker compose stop landingpage
+docker compose run --rm --no-deps -T landingpage tar -C /data -czf - . &gt; volume-backup.tar.gz
+docker compose start landingpage
+tar -tzf volume-backup.tar.gz</code></pre>
+<p>Bewahre das Archiv zugriffsgeschützt und verschlüsselt auf. Sichere separat <code>.env</code>, benutzte YAML-Dateien, lokale Sammler, Zeitpläne und externe Messdaten. Notiere die eingesetzte Imageversion.</p>
+<p>Teste die Wiederherstellung in einem neuen Installationsordner mit derselben Compose-Datei und Imageversion. Kopiere nur deine vertrauenswürdige Sicherung dorthin. Verwende einen neuen Compose-Projektnamen für ein eigenes Volume und freie Loopback-Ports. Prüfe vor dem Start die Bind-Adresse und ob der wiederhergestellte Zertifikatsname zum Editor passt.</p>
+<pre><code>docker compose -p landingpage-restore run --rm --no-deps -T landingpage tar -C /data -xzf - &lt; volume-backup.tar.gz
+DASHBOARD_BIND=127.0.0.1 DASHBOARD_HTTP_PORT=18080 DASHBOARD_HTTPS_PORT=18443 docker compose -p landingpage-restore up -d
+docker compose -p landingpage-restore exec -T landingpage python manage.py show</code></pre>
+<p>Öffne die wiederhergestellte Ansicht auf Port 18080 und prüfe Kategorien, Logos und nach der Anmeldung auch die Bearbeitung. Mit <code>docker compose -p landingpage-restore stop</code> beendest du nur diese Testinstanz.</p>
+<h3>Passwort wechseln und Zertifikat erneuern</h3>
+<p>Setze ein neues Passwort auf dem Docker-Host und starte den Dienst neu, damit er es einliest. Dieser Weg funktioniert auch bei vergessenem Editorpasswort.</p>
+<pre><code>docker compose run --rm --no-deps landingpage python tools/configure.py password
+docker compose restart landingpage</code></pre>
+<p>Das lokale Serverzertifikat gilt ein Jahr. Zur Erneuerung führe <code>configure.py tls-local</code> wie im LAN-Abschnitt mit allen benötigten <code>--host</code>-Angaben aus. Starte anschließend den Dienst neu und exportiere die neue CA für deine Geräte. Das Passwort bleibt dabei nutzbar.</p>
+<h3>Auf eine neue Version wechseln</h3>
+<ol><li>Sichere ZIP und Volume. Notiere den bisherigen Image-Tag. Prüfe die Versionshinweise.</li><li>Übernimm die zur neuen Version gehörende Compose-Konfiguration in denselben Installationsordner. Erhalte deine <code>.env</code>, zusätzlichen Compose-Dateien und den Compose-Projektnamen. Ein abweichender Projektname kann ein neues Volume anlegen.</li>
+<li>Lade das gewünschte Image und erstelle den Dienst neu. Kontrolliere danach die Kacheln und den HTTPS-Editor.</li></ol>
+<pre><code>docker compose pull
+docker compose up -d
+docker compose ps
+docker compose logs --tail 50 landingpage</code></pre>
+<h3>Die Startseite später über YAML ändern</h3>
+<p>Die alternative Vorlage <code>examples/dashboard-monitoring.example.yaml</code> beschreibt ein vollständiges Dashboard mit den Quellen <code>dashboard-health</code> und <code>disk-usage</code>. Du kannst einzelne Kacheldefinitionen aus ihr in deine eigene YAML übernehmen.</p><p>Der Datenbestand lebt nach dem ersten Start in SQLite. Für eine bewusste Änderung über YAML vergleiche die gewünschte vollständige Startseite mit dem gespeicherten Stand. Prüfe auch die Einträge, die die Vorschau zur Entfernung vorsieht. Verwende beim Anwenden die gerade angezeigte Revision anstelle von <code>N</code>.</p>
+<pre><code>docker compose exec -T landingpage python tools/configure.py preview &lt; dashboard.yaml
+docker compose exec -T landingpage python tools/configure.py apply --revision N &lt; dashboard.yaml</code></pre>
+<p>Bei einem Revisionskonflikt erstelle eine neue Vorschau und gleiche parallele Änderungen ab.</p>
+</section>
+<section id="hilfe"><h2>Fehler beheben</h2>
+<details><summary>Die Seite lädt nicht</summary><p>Führe im Installationsordner <code>docker compose ps</code> und <code>docker compose logs --tail 50 landingpage</code> aus. Prüfe belegte Hostports, die konfigurierte Bind-Adresse sowie HTTP bzw. HTTPS in der aufgerufenen Adresse. Bei Loopback-Bindung funktioniert der Zugriff direkt auf dem Host.</p></details>
+<details><summary>Der Editor öffnet die falsche Adresse oder meldet ein Zertifikatsproblem</summary><p>Vergleiche Namen oder IP und HTTPS-Port des Links mit deiner Installation. Das Zertifikat muss zu dieser Adresse passen. Exportiere die aktuelle lokale CA wie im Installationsabschnitt. Vergleiche ihren SHA-256-Fingerabdruck über einen vertrauenswürdigen Zugang zum Host und prüfe, ob genau diese CA im Browser als vertrauenswürdig hinterlegt ist.</p><pre><code>openssl x509 -in landingpage-local.crt -noout -fingerprint -sha256</code></pre></details>
+<details><summary>Eine Messquelle fehlt oder ein Wert ist veraltet</summary><p>Prüfe die Quellen-YAML, die Ausgabe von <code>manage.py sources</code> und den gewählten Kacheltyp. Eine HTTP-Freigabe muss exakt zur Ziel-Origin passen. Bei Snapshots müssen Dateiname, Leserechte und Zeitstempel stimmen. „Veraltet“ bedeutet, dass die letzte Messung ihr zulässiges Alter überschritten hat. Mit <code>docker compose exec -T landingpage python manage.py status</code> kannst du die Zustände prüfen.</p></details>
+<details><summary>Meine Änderungen sind nach dem Neuladen verschwunden</summary><p><b>Übernehmen</b> ändert den Entwurf. Erst <b>Speichern</b> schreibt ihn in die gemeinsame Datenbank. Meldet der Editor einen Versionskonflikt, notiere deine Änderungen, lade die aktuelle Fassung und übertrage sie erneut. Die Startdaten werden beim ersten Anlegen der Datenbank eingelesen.</p></details></section>
+<section id="dateien"><h2>Projektdateien</h2>
+<p>Für eine neue Installation enthält das Paket die Compose-Konfiguration, Beispiele und Hilfsdateien. Die einzelnen YAML-Dateien kannst du direkt herunterladen.</p>
+<ul><li><a href="./downloads/dashboard.example.yaml" download>Startseite mit Beispielkacheln (YAML)</a></li>
+<li><a href="./downloads/dashboard-monitoring.example.yaml" download>Alternative Startseite mit HTTP- und Speicherkachel (YAML)</a></li>
+<li><a href="./downloads/integrations.example.yaml" download>Beispiel für Messquellen (YAML)</a></li>
+<li><a href="./downloads/compose.yaml" download>Docker Compose (YAML)</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.0.0/landingpage-kit-1.0.0.zip">Installationspaket 1.0.0 (ZIP)</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/releases/tag/v1.0.0">Release mit Imagearchiven und SHA-256-Prüfsummen</a></li>
+<li><a href="https://github.com/r3d42-git/landingpage-kit/tree/v1.0.0">Quellcode der Version 1.0.0</a> · <a href="https://github.com/r3d42-git/landingpage-kit/blob/v1.0.0/LICENSE">Lizenz GPLv3</a></li></ul>
+</section>
+</div></div></main>
+<footer><span>Landingpage · Handbuch</span><a href="#anfang">Zum Anfang ↑</a></footer>
+</body></html>

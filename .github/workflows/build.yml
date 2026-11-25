@@ -1,0 +1,102 @@
+name: Test und Container
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Anwendung und Vorlagen testen
+        run: |
+          python -m pip install -r tools/requirements-configure.txt
+          python -m unittest discover -s tests
+      - name: Image bauen
+        run: |
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" -t landingpage-kit:test .
+      - name: Neuinstallation und Wiederherstellung mit Compose prüfen
+        env:
+          DASHBOARD_IMAGE: landingpage-kit:test
+          COMPOSE_PROJECT_NAME: installationstest
+        run: bash .github/workflows/check-install.sh
+      - name: Release-Image mit festem Versionsnamen exportieren
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${GITHUB_REF_NAME#v}"
+          docker tag landingpage-kit:test "$repository:$version"
+          docker save "$repository:$version" | gzip -1 > "landingpage-kit-linux-$ARCH.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: image-${{ matrix.arch }}
+          path: landingpage-kit-linux-*.tar.gz
+          compression-level: 0
+          retention-days: 2
+  release:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: image-*
+          path: release-files
+          merge-multiple: true
+      - name: Getestete Images in GHCR veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${GITHUB_REF_NAME#v}"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for arch in amd64 arm64; do
+            docker load -i "release-files/landingpage-kit-linux-$arch.tar.gz"
+            docker tag "$repository:$version" "$repository:$version-$arch"
+            docker push "$repository:$version-$arch"
+            docker image rm "$repository:$version" "$repository:$version-$arch"
+          done
+          docker buildx imagetools create --tag "$repository:$version" --tag "$repository:latest" "$repository:$version-amd64" "$repository:$version-arm64"
+          docker buildx imagetools inspect "$repository:$version"
+      - name: Installationspaket und Prüfsummen zusammenstellen
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          kit="landingpage-kit-$version"
+          mkdir -p "$RUNNER_TEMP/$kit"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/$kit"
+          mkdir -p "$RUNNER_TEMP/$kit/docs/downloads"
+          cp examples/*.yaml compose.yaml "$RUNNER_TEMP/$kit/docs/downloads/"
+          (cd "$RUNNER_TEMP" && zip -q -r "$GITHUB_WORKSPACE/release-files/$kit.zip" "$kit")
+          cd release-files
+          sha256sum *.tar.gz *.zip > SHA256SUMS
+      - name: Release mit Downloads veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --draft --title "Landingpage Kit ${GITHUB_REF_NAME#v}" --notes-file .github/release-notes.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" release-files/* --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false

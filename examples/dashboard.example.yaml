@@ -1,0 +1,30 @@
+# Kopiere diese Datei als dashboard.yaml. Namen, Adressen und Reihenfolge kannst du ändern.
+# IDs sind die stabilen Namen der Gruppen und Kacheln. Jede ID ist innerhalb ihrer Liste eindeutig.
+settings:
+  title: Meine Startseite
+  subtitle: Links und Dienste an einem Ort
+
+groups:
+  - id: einstieg
+    name: Einstieg
+    icon: home
+    items:
+      - id: handbuch
+        name: Landingpage-Kit-Handbuch
+        kind: link
+        url: https://r3d42-git.github.io/landingpage-kit/
+        subtitle: Installation und Konfigurationsbeispiele
+        tag: Dokumentation
+      - id: beispielseite
+        name: Beispielseite
+        kind: link
+        url: https://example.org/
+        subtitle: Diese Adresse kannst du durch deinen eigenen Link ersetzen.
+        target: _blank
+        # check_link: true  # Regelmäßige Prüfung einer öffentlich erreichbaren Webseite.
+
+  - id: eigene-dienste
+    name: Eigene Dienste
+    icon: server
+    # Kacheln stehen in der Reihenfolge dieser Liste. Eine leere Liste ist erlaubt.
+    items: []

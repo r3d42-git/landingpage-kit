@@ -1,0 +1,6 @@
+services:
+  landingpage:
+    image: ${DASHBOARD_IMAGE:-landingpage-kit:local}
+    build:
+      context: .
+    pull_policy: never
