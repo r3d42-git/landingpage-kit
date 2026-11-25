@@ -48,3 +48,4 @@ footer{border-top:1px solid var(--line);justify-content:space-between;padding:1.
 .routes b{font-size:.94rem}.routes small{color:var(--soft);font-size:.82rem;grid-column:1}.routes code{grid-column:2;grid-row:1/3;color:var(--green);background:var(--surface);font-size:.7rem;white-space:nowrap;padding:.29rem .42rem;border:1px solid var(--line);border-radius:.32rem;align-self:center}
 @media(max-width:64.999rem){.overview{margin-top:1.7rem;max-width:26rem}}
 @media(max-width:25rem){.routes>div{display:block}.routes small,.routes code{display:block;width:max-content;max-width:100%;margin-top:.24rem}.routes code{white-space:normal}}
+.board-shot{margin:1.4rem 0}.board-shot a{display:block;overflow:hidden;border:1px solid var(--line);border-radius:.65rem}.board-shot img{display:block;width:100%;height:auto}.board-shot figcaption{font-size:.86rem;color:var(--soft);margin-top:.45rem}

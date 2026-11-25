@@ -25,7 +25,7 @@
 </nav>
 <div class="chapters">
 <section id="installation"><h2>Installation</h2>
-<p>Du brauchst einen Host mit laufendem Docker und dem Compose-Plug-in. Die Standardinstallation bindet beide Ports an Loopback. Sie lässt sich direkt auf dem Host nutzen. Für den Zugang von anderen Geräten findest du weiter unten die LAN-Einstellungen.</p>
+<p>Du brauchst einen Host mit laufendem Docker und dem Compose-Plug-in. Die Standardinstallation bindet beide Ports an Loopback. Sie lässt sich direkt auf dem Host nutzen. Für den Zugang von anderen Geräten findest du weiter unten die LAN-Einstellungen. Docker Desktop enthält Compose bereits. Für Linux-Server stehen Engine und Compose-Plug-in separat bereit. <a href="https://docs.docker.com/engine/install/">Docker Engine installieren</a> · <a href="https://docs.docker.com/compose/install/">Docker Compose installieren</a></p>
 <p>Die Befehle verwenden eine Unix-Shell. Auf Windows kannst du sie in WSL mit Docker-Anbindung ausführen.</p><h3>1. Dateien vorbereiten</h3>
 <p>Lade das <a href="https://github.com/r3d42-git/landingpage-kit/releases/download/v1.0.0/landingpage-kit-1.0.0.zip">Installationspaket für Version 1.0.0</a> herunter. Entpacke es in einen neuen Ordner und öffne dort ein Terminal. Alle folgenden Compose-Befehle laufen im Ordner mit <code>compose.yaml</code>.</p>
 <pre><code>docker compose version
@@ -62,6 +62,7 @@ docker compose up -d --force-recreate</code></pre></details>
 <div class="prompt"><div class="promptbar"><strong>Installationsauftrag</strong><button hidden id="copy" type="button">Prompt kopieren</button></div><p id="auftrag">Richte das Projekt https://github.com/r3d42-git/landingpage-kit nach dem zugehörigen Handbuch auf meinem Zielsystem ein. Prüfe Betriebssystem, Docker Compose, freie Ports und vorhandene Dateien. Kläre mit mir den Installationsordner und ob ich ausschließlich auf diesem Rechner oder auch im LAN zugreifen möchte. Verwende die offiziellen Dateien der gewählten Projektversion und die mitgelieferten neutralen Startdaten. Erhalte vorhandene Instanzen, verwende ausschließlich die vereinbarte Bind-Adresse und zeige keine Passwörter oder privaten Schlüssel im Chat. Richte den Dienst ein, prüfe den HTTP-Lesezugriff sowie den HTTPS-Editor und zeige mir die URLs, den Weg zur Passwortverwaltung und die Schritte für Sicherung und Update. Bitte mich bei einer erforderlichen lokalen Eingabe um die konkrete Aktion. Optionale Messquellen richten wir erst ein, wenn ich die gewünschten Ziele angegeben habe.</p><span id="copystatus" role="status"></span></div></section>
 <section id="editor"><h2>Erste Schritte im Editor</h2>
 <p>Mit der mitgelieferten Startdatei erscheint „Meine Startseite“. Unter <b>Einstieg</b> findest du das Handbuch und die „Beispielseite“. <b>Eigene Dienste</b> ist als leere Kategorie für deine ersten Einträge vorbereitet. Du kannst dort direkt eine Kachel anlegen oder eine zusätzliche Kategorie erstellen.</p>
+<figure class="board-shot"><a href="abbildungen/startseite.png" aria-label="Beispielstartseite in Originalgröße öffnen"><img loading="lazy" alt="Ausgebaute Beispielstartseite mit drei Kategorien und neun Linkkacheln" width="1440" height="560" src="abbildungen/startseite.png"></a><figcaption>Eine ausgebaute Beispielstartseite mit eigenen Kategorien und neun Links. Zum Vergrößern das Bild öffnen.</figcaption></figure>
 <ol><li>Öffne die Startseite und wähle <b>Bearbeiten</b>. Der Browser öffnet die HTTPS-Anmeldung. Gib dein zuvor gewähltes Editorpasswort ein.</li>
 <li>Wähle am Ende der Seite <b>Kategorie hinzufügen</b>. Trage etwa „Werkzeuge“ ein, wähle ein <b>Kategoriesymbol</b> und bestätige mit <b>Übernehmen</b>.</li>
 <li>Öffne das Plus neben „Werkzeuge“. Trage als <b>Name</b> „Mein Wiki“ und als <b>Adresse</b> die URL deines Wikis ein. Ergänze eine Beschreibung und lasse <b>Überwachung</b> auf <b>Nur Verknüpfung</b>. Unter <b>Weitere Optionen</b> kannst du ein Schlagwort und das Verhalten beim Öffnen festlegen.</li>
@@ -116,6 +117,28 @@ docker compose -f compose.yaml -f deploy/compose.metrics.yaml up -d</code></pre>
 <details><summary>Beispiel für einen minütlichen Cronjob</summary><p>Ermittle die Pfade mit <code>command -v python3</code> und <code>pwd</code> im Installationsordner. Öffne mit <code>crontab -e</code> die vorhandene Tabelle des Benutzers, der in das Messverzeichnis schreiben darf. Ergänze eine Zeile und ersetze die Beispielpfade durch deine eigenen. Prüfe nach zwei Minuten den Zeitstempel von <code>disk-usage.json</code>.</p>
 <pre><code>* * * * * /usr/bin/python3 /opt/landingpage-kit/examples/write-disk-snapshot.py /opt/landingpage-kit/instance/metrics/disk-usage.json --path /</code></pre></details>
 <p>Andere Sammler können dasselbe Format schreiben. <code>observed_at</code> ist die Messzeit in Unix-Sekunden, <code>state</code> einer der Werte <code>ok</code>, <code>warning</code>, <code>down</code>, <code>unknown</code> oder <code>stale</code>. <code>metrics</code> enthält Paare aus <code>label</code> und <code>value</code>. <code>progress</code> ist optional und liegt zwischen 0 und 100. Schreibe zunächst eine temporäre Datei und ersetze die Zieldatei anschließend atomar.</p>
+<h3>Beispiel C · Pi-hole und Prometheus verbinden</h3>
+<p>Übernimm die Einträge deiner vorhandenen Quellenliste oder beginne eine neue <code>integrations.yaml</code> mit dem Beispiel. Ersetze die Namen und Ports durch die aus deinem Netzwerk. Die HTTPS-Verbindung setzt ein für den Container vertrauenswürdiges Zertifikat voraus.</p>
+<pre><code>allowed_endpoints:
+  - https://dns.home.arpa
+  - http://prometheus.home.arpa:9090
+sources:
+  - id: dns-statistik
+    label: DNS-Statistik
+    kind: pihole
+    display_kind: pihole
+    url: https://dns.home.arpa/api/stats/summary
+  - id: monitoring-ziele
+    label: Prometheus-Ziele
+    kind: prometheus
+    display_kind: service
+    url: http://prometheus.home.arpa:9090</code></pre>
+<p>Pi-hole v6 liefert die Zusammenfassung unter <code>/api/stats/summary</code>. Der direkte Adapter liest einen bereits autorisiert erreichbaren Statistikpfad ohne Login oder Sitzung. Prüfe, ob dein Monitoring-Zugang den Pfad auf diese Weise lesen darf. Bei geschützter API behältst du die Authentifizierung bei. Lass stattdessen einen eigenen Sammler auf dem Host mit seinen dort verwahrten Zugangsdaten abfragen und einen Snapshot wie in Beispiel B schreiben. Für die Pi-hole-Ansicht setze dessen <code>display_kind</code> auf <code>pihole</code> und verwende die Messfeldnamen <code>Anfragen (24 h)</code> und <code>Blockiert</code>. <a href="https://docs.pi-hole.net/api/">Pi-hole-API und lokale Dokumentation</a></p>
+<pre><code>docker compose run --rm --no-deps -T landingpage python tools/configure.py check-sources &lt; integrations.yaml
+docker compose run --rm --no-deps -T landingpage python tools/configure.py sources &lt; integrations.yaml
+docker compose exec -T landingpage python manage.py sources</code></pre>
+<ol><li><b>DNS-Kachel anlegen.</b> Öffne <b>Bearbeiten</b> und das Plus an der Kategorie. Setze als Namen „DNS-Filter“ und als Adresse die URL deiner Pi-hole-Oberfläche. Wähle unter <b>Überwachung → Pi-hole</b> die Messquelle <b>DNS-Statistik</b>. Klicke auf <b>Übernehmen → Speichern</b>. In der Leseansicht erscheinen die Anfragen und der blockierte Anteil. <b>Weitere Messwerte</b> öffnet unter anderem die Zahl der aktiven Clients.</li>
+<li><b>Dienstmetriken anlegen.</b> Lege über das Plus eine zweite Kachel mit dem Namen „Monitoring“ und der URL deiner Prometheus-Oberfläche an. Wähle <b>Dienstmetriken → Prometheus-Ziele</b> und dann <b>Übernehmen → Speichern</b>. Der Adapter liest <code>/-/ready</code> und <code>/api/v1/targets?state=active</code>. Nach dem Abruf zeigt die Kachel die erfolgreichen und ausgefallenen Scrape-Ziele.</li></ol>
 <h3>Weitere Adapter</h3>
 <dl class="tiles"><dt>TCP-Port und Host</dt><dd><code>tcp</code> verwendet eine <code>tcp://</code>-URL mit explizitem Port. <code>host</code> benötigt zwei Einträge unter <code>targets</code>, jeweils mit <code>label</code> und <code>url</code> für denselben Host auf unterschiedlichen Ports. Gib jede Origin einzeln unter <code>allowed_endpoints</code> frei.</dd>
 <dt>Pi-hole</dt><dd><code>kind: pihole</code> liest die kompatible Statistik-API an der angegebenen <code>url</code>. Optional ergänzen <code>blocking_url</code> auf derselben Origin und eine lokale <code>dns_file</code> die Daten um Blockierungsstatus und DNS-Messung.</dd>
@@ -145,7 +168,7 @@ docker compose -p landingpage-restore exec -T landingpage python manage.py show<
 <p>Setze ein neues Passwort auf dem Docker-Host und starte den Dienst neu, damit er es einliest. Dieser Weg funktioniert auch bei vergessenem Editorpasswort.</p>
 <pre><code>docker compose run --rm --no-deps landingpage python tools/configure.py password
 docker compose restart landingpage</code></pre>
-<p>Das lokale Serverzertifikat gilt ein Jahr. Zur Erneuerung führe <code>configure.py tls-local</code> wie im LAN-Abschnitt mit allen benötigten <code>--host</code>-Angaben aus. Starte anschließend den Dienst neu und exportiere die neue CA für deine Geräte. Das Passwort bleibt dabei nutzbar.</p>
+<p>Das lokale Serverzertifikat gilt ein Jahr. Zur Erneuerung führe <code>configure.py tls-local</code> wie im LAN-Abschnitt mit allen benötigten <code>--host</code>-Angaben aus. Starte anschließend den Dienst neu und exportiere die neue CA für deine Geräte.</p>
 <h3>Auf eine neue Version wechseln</h3>
 <ol><li>Sichere ZIP und Volume. Notiere den bisherigen Image-Tag. Prüfe die Versionshinweise.</li><li>Übernimm die zur neuen Version gehörende Compose-Konfiguration in denselben Installationsordner. Erhalte deine <code>.env</code>, zusätzlichen Compose-Dateien und den Compose-Projektnamen. Ein abweichender Projektname kann ein neues Volume anlegen.</li>
 <li>Lade das gewünschte Image und erstelle den Dienst neu. Kontrolliere danach die Kacheln und den HTTPS-Editor.</li></ol>
